@@ -2,6 +2,22 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ============================================
+// SEEN TRACKING — which cutouts have been clicked
+// ============================================
+let seenIndices = new Set();
+try {
+    const raw = localStorage.getItem('mayao-seen');
+    if (raw) seenIndices = new Set(JSON.parse(raw));
+} catch(e) {}
+
+function markSeen(idx) {
+    if (!seenIndices.has(idx)) {
+        seenIndices.add(idx);
+        localStorage.setItem('mayao-seen', JSON.stringify([...seenIndices]));
+    }
+}
+
+// ============================================
 // DATA — load from localStorage (shared with admin/submit)
 // ============================================
 const SHAPE_DEFS = {
@@ -115,47 +131,17 @@ const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: t
 // ============================================
 // ROOM
 // ============================================
-// Helper to share cutout uniforms but allow independent base colour
-function makeRoomUniforms(baseColorHex) {
-    return {
-        uLightPos: projectionUniforms.uLightPos,
-        uCutoutCount: projectionUniforms.uCutoutCount,
-        uCutoutPositions: projectionUniforms.uCutoutPositions,
-        uCutoutColors: projectionUniforms.uCutoutColors,
-        uCutoutRadii: projectionUniforms.uCutoutRadii,
-        uBaseColor: { value: new THREE.Color(baseColorHex) }
-    };
-}
-
-const wallShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader,
-    side: THREE.BackSide
-});
-
-const floorShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader
-});
-
-const ceilingShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xbbbbbb),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader
-});
-
-const wall = new THREE.Mesh(new THREE.CylinderGeometry(ROOM_RADIUS, ROOM_RADIUS, 9, 56, 1, true), wallShaderMat);
+// (Shader materials created below after projection shader definitions)
+const wall = new THREE.Mesh(new THREE.CylinderGeometry(ROOM_RADIUS, ROOM_RADIUS, 9, 56, 1, true), null); // mat assigned later
 wall.position.y = 1;
 scene.add(wall);
 
-const floor = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS * 2, 56), floorShaderMat);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS * 2, 56), null); // mat assigned later
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -3.5;
 scene.add(floor);
 
-const ceiling = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS, 56), ceilingShaderMat);
+const ceiling = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS, 56), null); // mat assigned later
 ceiling.rotation.x = Math.PI / 2;
 ceiling.position.y = 5.5;
 scene.add(ceiling);
@@ -240,7 +226,8 @@ const projectionUniforms = {
     uCutoutPositions: { value: Array(MAX_CUTOUTS).fill().map(() => new THREE.Vector3()) },
     uCutoutColors: { value: Array(MAX_CUTOUTS).fill().map(() => new THREE.Color()) },
     uCutoutRadii: { value: new Float32Array(MAX_CUTOUTS) },
-    uBaseColor: { value: new THREE.Color(0xffffff) }
+    uBaseColor: { value: new THREE.Color(0xffffff) },
+    uProjIntensity: { value: 1.0 }
 };
 
 const projectionVertexShader = `
@@ -261,15 +248,16 @@ const projectionFragmentShader = `
     uniform vec3 uCutoutColors[12];
     uniform float uCutoutRadii[12];
     uniform vec3 uBaseColor;
+    uniform float uProjIntensity;
     varying vec3 vWorldPosition;
     varying vec3 vNormal;
 
     void main() {
-        // Simple ambient + diffuse lighting for the room surface
+        // Ambient + diffuse — darker base so coloured light-gel projections pop
         vec3 ambient = vec3(0.55);
         vec3 lightDir = normalize(vec3(0.3, 1.0, 0.2));
         float diff = max(dot(normalize(vNormal), lightDir), 0.0);
-        vec3 base = uBaseColor * (ambient + vec3(0.30) * diff);
+        vec3 base = uBaseColor * (ambient + vec3(0.30) * diff) * 0.52;
 
         // Ray from light to this pixel
         vec3 toPixel = vWorldPosition - uLightPos;
@@ -277,6 +265,7 @@ const projectionFragmentShader = `
         vec3 rayDir = toPixel / max(pixelDist, 0.001);
 
         vec3 projColor = vec3(0.0);
+        float projAlpha = 0.0;
 
         for (int i = 0; i < 12; i++) {
             if (i >= uCutoutCount) break;
@@ -296,21 +285,63 @@ const projectionFragmentShader = `
             vec3 hit = uLightPos + rayDir * t;
             float dist = distance(hit, cPos);
 
-            // Projection grows with distance from light (perspective)
-            float projRadius = cRadius * (1.0 + t * 3.0);
-            float edge = projRadius * 0.5;
+            // Large, soft projection like coloured light-gels in a gallery
+            float projRadius = cRadius * (1.0 + t * 1.5);
+            float edge = projRadius * 0.55; // very soft, atmospheric falloff
 
             if (dist < projRadius) {
                 float alpha = 1.0 - smoothstep(projRadius - edge, projRadius, dist);
-                projColor += cCol * alpha * 0.22;
+                float strength = alpha * 0.30 * uProjIntensity;
+                // Saturated colours that mix where they overlap (red+blue=magenta, etc.)
+                projColor += cCol * alpha * 1.15;
+                // Over-operator keeps brightness growth gentle even with many overlaps
+                projAlpha += (1.0 - projAlpha) * strength;
             }
         }
 
-        vec3 finalColor = base + projColor;
-        finalColor = min(finalColor, vec3(1.0));
+        projColor = min(projColor, vec3(1.15));
+        projAlpha = min(projAlpha, 0.80);
+        // Soft additive blend — like transparent coloured gels casting light on a white wall
+        vec3 finalColor = base + projColor * projAlpha * 0.85;
+        // Hard ceiling prevents blown-out white even with 5-10 overlapping projections
+        finalColor = min(finalColor, vec3(0.95));
         gl_FragColor = vec4(finalColor, 1.0);
     }
 `;
+
+// Helper to share cutout uniforms but allow independent base colour
+function makeRoomUniforms(baseColorHex) {
+    return {
+        uLightPos: projectionUniforms.uLightPos,
+        uCutoutCount: projectionUniforms.uCutoutCount,
+        uCutoutPositions: projectionUniforms.uCutoutPositions,
+        uCutoutColors: projectionUniforms.uCutoutColors,
+        uCutoutRadii: projectionUniforms.uCutoutRadii,
+        uBaseColor: { value: new THREE.Color(baseColorHex) },
+        uProjIntensity: projectionUniforms.uProjIntensity
+    };
+}
+
+const wallShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xffffff),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader,
+    side: THREE.BackSide
+});
+const floorShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xffffff),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader
+});
+const ceilingShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xbbbbbb),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader
+});
+
+wall.material = wallShaderMat;
+floor.material = floorShaderMat;
+ceiling.material = ceilingShaderMat;
 
 function buildMobile() {
     cutouts.forEach(c => { mobileGroup.remove(c.group); });
@@ -386,7 +417,7 @@ const mediaPlaneMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 
 const mediaPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.0), mediaPlaneMat);
 mediaPlane.position.copy(projMesh.position);
 mediaPlane.position.x += 0.04; // slightly in front of projMesh
-mediaPlane.position.y -= 0.6;  // lower on the wall — below title, above date
+// centred vertically inside the 4:3 panel
 mediaPlane.rotation.y = Math.PI / 2;
 scene.add(mediaPlane);
 
@@ -435,7 +466,7 @@ function setDetailMedia(msg) {
         const video = document.createElement('video');
         video.crossOrigin = 'anonymous';
         video.src = msg.content;
-        video.loop = true;
+        video.loop = false;
         video.muted = false; // try with sound first
         video.playsInline = true;
         currentVideoEl = video;
@@ -461,7 +492,7 @@ function setDetailMedia(msg) {
         const audio = document.createElement('audio');
         audio.crossOrigin = 'anonymous';
         audio.src = msg.content;
-        audio.loop = true;
+        audio.loop = false;
         currentAudioEl = audio;
         audio.play().catch(() => {});
     }
@@ -472,57 +503,126 @@ function drawProjection(msg, def) {
     const ctx = pCtx, w = projCanvas.width, h = projCanvas.height;
     ctx.clearRect(0, 0, w, h);
     const r = (def.glow>>16)&0xff, g = (def.glow>>8)&0xff, b = def.glow&0xff;
-    const grad = ctx.createRadialGradient(w*0.3, h*0.42, 0, w*0.45, h*0.5, w*0.85);
-    grad.addColorStop(0, `rgba(${r},${g},${b},0.32)`);
-    grad.addColorStop(0.5, `rgba(${r},${g},${b},0.14)`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
-    const core = ctx.createRadialGradient(w*0.28, h*0.38, 0, w*0.28, h*0.38, w*0.4);
-    core.addColorStop(0, `rgba(${Math.min(r+20,255)},${Math.min(g+20,255)},${Math.min(b+20,255)},0.18)`);
-    core.addColorStop(1, `rgba(${r},${g},${b},0)`);
-    ctx.fillStyle = core; ctx.fillRect(0,0,w,h);
-    ctx.textBaseline = 'top'; ctx.fillStyle = '#1a1a1a';
-    ctx.font = '300 20px Cinzel, serif'; ctx.fillText(def.label.toUpperCase(), 70, 70);
-    ctx.font = '400 54px Cinzel, serif';
+
+    // === OUTER LAYER: Irregular coloured halo ===
+    const halos = [
+        { cx: 0.50, cy: 0.48, r: 0.65, a0: 0.32, a1: 0 },
+        { cx: 0.32, cy: 0.35, r: 0.42, a0: 0.22, a1: 0 },
+        { cx: 0.65, cy: 0.60, r: 0.38, a0: 0.18, a1: 0 },
+        { cx: 0.45, cy: 0.65, r: 0.32, a0: 0.14, a1: 0 },
+        { cx: 0.60, cy: 0.40, r: 0.28, a0: 0.12, a1: 0 },
+    ];
+    for (const hl of halos) {
+        const gd = ctx.createRadialGradient(w*hl.cx, h*hl.cy, 0, w*hl.cx, h*hl.cy, w*hl.r);
+        gd.addColorStop(0, `rgba(${r},${g},${b},${hl.a0})`);
+        gd.addColorStop(1, `rgba(${r},${g},${b},${hl.a1})`);
+        ctx.fillStyle = gd;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    // === INNER LAYER: Grey-white 4:3 panel ===
+    const panelW = Math.min(w * 0.82, 980);
+    const panelH = panelW * 0.75;
+    const px = (w - panelW) / 2;
+    const py = (h - panelH) / 2;
+
+    // Soft coloured shadow behind panel
+    ctx.shadowColor = `rgba(${r},${g},${b},0.30)`;
+    ctx.shadowBlur = 50;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 10;
+
+    ctx.fillStyle = 'rgba(250, 249, 247, 0.96)';
+    roundRect(ctx, px, py, panelW, panelH, 18);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Subtle border
+    ctx.strokeStyle = `rgba(${r},${g},${b},0.40)`;
+    ctx.lineWidth = 2;
+    roundRect(ctx, px, py, panelW, panelH, 18);
+    ctx.stroke();
+
+    // === CONTENT INSIDE PANEL ===
+    const pad = 42;
+    const cx = px + pad;
+    const cw = panelW - pad * 2;
+
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#0a0a0a';
+
+    // Label
+    ctx.font = '500 18px Cinzel, serif';
+    ctx.fillText(def.label.toUpperCase(), cx, py + pad);
+
+    // Title
+    ctx.font = '600 48px Cinzel, serif';
     const words = msg.title.split(' ');
-    let line = '', y = 145;
+    let line = '', y = py + pad + 38;
     for (let word of words) {
-        const test = line + (line?' ':'') + word;
-        if (ctx.measureText(test).width > w-140 && line) { ctx.fillText(line,70,y); y+=72; line=word; }
-        else line=test;
+        const test = line + (line ? ' ' : '') + word;
+        if (ctx.measureText(test).width > cw && line) {
+            ctx.fillText(line, cx, y);
+            y += 58;
+            line = word;
+        } else line = test;
     }
-    if (line) { ctx.fillText(line,70,y); y+=88; }
-    if (msg.type==='text'||msg.type==='wish') {
-        ctx.font = '300 27px Inter, sans-serif'; ctx.globalAlpha=0.88;
+    if (line) { ctx.fillText(line, cx, y); y += 74; }
+
+    if (msg.type === 'text' || msg.type === 'wish') {
+        ctx.font = '500 26px Inter, sans-serif';
+        ctx.fillStyle = '#2a2a2a';
         const bwords = msg.content.split(' ');
-        line=''; let by=y;
+        line = '';
+        let by = y;
         for (let word of bwords) {
-            const test = line + (line?' ':'') + word;
-            if (ctx.measureText(test).width > w-140 && line) { ctx.fillText(line,70,by); by+=44; line=word; }
-            else line=test;
+            const test = line + (line ? ' ' : '') + word;
+            if (ctx.measureText(test).width > cw && line) {
+                ctx.fillText(line, cx, by);
+                by += 40;
+                line = word;
+            } else line = test;
         }
-        if (line) ctx.fillText(line,70,by);
-        ctx.globalAlpha=1;
+        if (line) ctx.fillText(line, cx, by);
     }
+
     if (msg.type === 'audio') {
-        // Draw a simple audio-wave graphic on the canvas projection
-        ctx.globalAlpha = 0.45;
-        const barCount = 32, barW = 6, barGap = 10, startX = 70, waveY = y + 40;
+        ctx.globalAlpha = 0.55;
+        const barCount = 26, barW = 5, barGap = 8, startX = cx, waveY = y + 30;
         for (let i = 0; i < barCount; i++) {
-            const barH = 6 + Math.abs(Math.sin(i * 0.8 + msg.title.length)) * 36;
-            ctx.fillStyle = `rgba(${r},${g},${b},0.55)`;
+            const barH = 5 + Math.abs(Math.sin(i * 0.8 + msg.title.length)) * 28;
+            ctx.fillStyle = `rgba(${r},${g},${b},0.60)`;
             ctx.fillRect(startX + i * (barW + barGap), waveY - barH / 2, barW, barH);
         }
+        ctx.globalAlpha = 0.80;
+        ctx.font = '500 20px Inter, sans-serif';
         ctx.fillStyle = '#1a1a1a';
-        ctx.font = '300 21px Inter, sans-serif';
-        ctx.globalAlpha = 0.6;
-        ctx.fillText('Audio message', 70, waveY + 40);
+        ctx.fillText('Audio message', cx, waveY + 30);
         ctx.globalAlpha = 1;
     }
-    ctx.font='300 17px Cinzel, serif'; ctx.globalAlpha=0.5;
-    ctx.fillText(`${msg.date}  ·  ${msg.author||'Anonymous'}`, 70, h-85);
-    ctx.globalAlpha=1;
+
+    // Date / Author — same style as body text, slightly smaller
+    ctx.font = '500 22px Inter, sans-serif';
+    ctx.fillStyle = '#444444';
+    ctx.fillText(`${msg.date}  ·  ${msg.author || 'Anonymous'}`, cx, py + panelH - pad - 16);
+
     projTex.needsUpdate = true;
+}
+
+function roundRect(ctx, x, y, w, h, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
 }
 
 // ============================================
@@ -573,8 +673,8 @@ function updateCam() {
     controls.target.lerpVectors(camT.st, camT.et, t);
     camera.fov = THREE.MathUtils.lerp(camT.sf, camT.ef, t);
     camera.updateProjectionMatrix();
-    if (viewMode === 'detail') { projMat.opacity = t*0.9; glowMat.opacity = t*0.12; mediaPlaneMat.opacity = targetMediaOpacity * t; }
-    else { projMat.opacity = (1-t)*0.9; glowMat.opacity = (1-t)*0.12; mediaPlaneMat.opacity = (1-t)*targetMediaOpacity; }
+    if (viewMode === 'detail') { projMat.opacity = t*0.98; glowMat.opacity = 0.0; mediaPlaneMat.opacity = targetMediaOpacity * t; }
+    else { projMat.opacity = (1-t)*0.98; glowMat.opacity = 0.0; mediaPlaneMat.opacity = (1-t)*targetMediaOpacity; }
     if (t >= 1) camT = null;
 }
 
@@ -644,6 +744,7 @@ function onClk(e) {
     if (hovered) {
         const d = hovered.userData;
         selectedIdx = d.idx;
+        markSeen(d.idx);
         drawProjection(d.msg, d.def);
         toMode('detail');
     } else if (viewMode === 'detail') {
@@ -672,7 +773,10 @@ renderer.domElement.addEventListener('touchend', e => {
         const hits = raycaster.intersectObjects(hitboxes);
         if (hits.length) {
             const d = hits[0].object.userData.parent.userData;
-            selectedIdx = d.idx; drawProjection(d.msg, d.def); toMode('detail');
+            selectedIdx = d.idx;
+            markSeen(d.idx);
+            drawProjection(d.msg, d.def);
+            toMode('detail');
         } else if (viewMode === 'detail') {
             toMode('panorama');
         }
@@ -813,7 +917,12 @@ function animate() {
         } else {
             p.position.y += (c.pos.origY - p.position.y) * 0.04;
             // In detail mode, dim unselected cutouts so the selected one + wall projection pop
-            const targetEmissive = (viewMode === 'detail') ? 0.06 : p.userData.origEmissive;
+            let targetEmissive = (viewMode === 'detail') ? 0.06 : p.userData.origEmissive;
+            // Unseen cutouts pulse gently in panorama mode to invite clicks
+            if (viewMode === 'panorama' && !seenIndices.has(i)) {
+                const pulse = Math.sin(time * 2.5 + i * 1.3) * 0.5 + 0.5;
+                targetEmissive = 0.15 + pulse * 0.45;
+            }
             p.material.emissiveIntensity += (targetEmissive - p.material.emissiveIntensity) * 0.04;
             p.material.opacity += (0.72 - p.material.opacity) * 0.04;
             const gx = c.group.position.x, gz = c.group.position.z;
@@ -826,11 +935,12 @@ function animate() {
 
     // Sync cutout count to shader for ray-traced projections
     projectionUniforms.uCutoutCount.value = Math.min(cutouts.length, MAX_CUTOUTS);
+    projectionUniforms.uProjIntensity.value = (viewMode === 'panorama') ? 0.50 : 0.15;
 
     // Dim the mobile light in detail mode so the wall projection is the hero
-    const orbBase = viewMode === 'detail' ? 0.30 : 0.65;
+    const orbBase = viewMode === 'detail' ? 0.30 : 0.78;
     lightOrb.material.opacity = orbBase + Math.sin(time * 0.5) * 0.15;
-    const lightBase = viewMode === 'detail' ? 2.2 : 4.5;
+    const lightBase = viewMode === 'detail' ? 2.2 : 5.4;
     centerLight.intensity = lightBase + Math.sin(time * 0.35) * (viewMode === 'detail' ? 0.6 : 1.2);
     centerLight.color.setHSL(0.08, 0.15, 0.98 + Math.sin(time * 0.4) * 0.02);
     if (glowMat.opacity > 0.01) {
