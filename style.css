@@ -45,16 +45,16 @@ body.loaded #canvas-container { opacity: 1; }
     opacity: 0; pointer-events: none;
     transition: opacity 0.8s ease 0.6s;
 }
-body.loaded .legend { opacity: 0.55; pointer-events: auto; }
+body.loaded .legend { opacity: 0.8; pointer-events: auto; }
 .legend-item {
     display: flex; align-items: center; gap: 6px;
     font-size: 0.65rem;
     letter-spacing: 0.1em;
-    color: rgba(38,36,37,0.55);
+    color: rgba(38,36,37,0.75);
     text-transform: uppercase;
     cursor: default;
 }
-.legend-shape { width: 14px; height: 14px; color: rgba(38,36,37,0.35); }
+.legend-shape { width: 14px; height: 14px; color: rgba(38,36,37,0.55); }
 
 /* Corner triggers */
 .corner-trigger {
@@ -93,7 +93,7 @@ body.loaded .corner-trigger { opacity: 0.4; }
     pointer-events: none;
     z-index: 20;
 }
-body.loaded .bottom-info { opacity: 0.5; }
+body.loaded .bottom-info { opacity: 0.75; }
 .bottom-info h1 {
     font-family: 'Cinzel', serif;
     font-size: 1.1rem;
@@ -115,14 +115,14 @@ body.loaded .bottom-info { opacity: 0.5; }
     transform: translateX(-50%);
     font-size: 0.65rem;
     letter-spacing: 0.1em;
-    color: rgba(38,36,37,0.35);
+    color: rgba(38,36,37,0.55);
     opacity: 0;
     transition: opacity 0.8s ease 1.2s;
     z-index: 20;
     pointer-events: none;
 }
 body.loaded .hint { animation: fadeInOut 5s ease-in-out 0s forwards; }
-@keyframes fadeInOut { 0%,100%{opacity:0;} 20%,80%{opacity:0.6;} }
+@keyframes fadeInOut { 0%,100%{opacity:0;} 20%,80%{opacity:0.85;} }
 
 /* QR Modal */
 .qr-modal {

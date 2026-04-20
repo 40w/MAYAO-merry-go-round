@@ -1,8 +1,8 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ============================================
-// SEEN TRACKING — which cutouts have been clicked
+// SEEN TRACKING â€” which cutouts have been clicked
 // ============================================
 let seenIndices = new Set();
 try {
@@ -18,14 +18,14 @@ function markSeen(idx) {
 }
 
 // ============================================
-// DATA — load from localStorage (shared with admin/submit)
+// DATA â€” load from localStorage (shared with admin/submit)
 // ============================================
 const SHAPE_DEFS = {
-    text:  { shape: 'circle', color: 0xffd0e0, glow: 0xffa8c0, label: 'Text' },
-    audio: { shape: 'star',   color: 0xb0e0ff, glow: 0x88c8ff, label: 'Audio' },
-    image: { shape: 'square', color: 0xffe8a0, glow: 0xffd060, label: 'Image' },
-    video: { shape: 'ring',   color: 0xd0b8ff, glow: 0xb898ff, label: 'Video' },
-    wish:  { shape: 'petal',  color: 0xb8ffd0, glow: 0x90f0b8, label: 'Wish' }
+    text:  { shape: 'circle',   color: 0xffffff, glow: 0xf0f0f0, label: 'Text' },
+    audio: { shape: 'triangle', color: 0x00ffff, glow: 0x00e0e0, label: 'Audio' },
+    image: { shape: 'longrect', color: 0xffff00, glow: 0xe0e000, label: 'Image' },
+    video: { shape: 'ring',     color: 0xff00ff, glow: 0xe000e0, label: 'Video' },
+    wish:  { shape: 'petal',    color: 0xb8ffd0, glow: 0x90f0b8, label: 'Wish' }
 };
 
 function formatDate(ts) {
@@ -154,7 +154,7 @@ const lightOrb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 24, 24), orbCoreM
 lightOrb.position.y = RING_Y - 0.25;
 mobileGroup.add(lightOrb);
 
-// Soft radial glow halo — like a real lamp with smooth falloff
+// Soft radial glow halo â€” like a real lamp with smooth falloff
 function createOrbGlowTexture() {
     const cvs = document.createElement('canvas');
     cvs.width = 256; cvs.height = 256;
@@ -208,6 +208,23 @@ function makeShape(type) {
             sh.closePath(); return new THREE.ShapeGeometry(sh);
         }
         case 'ring': return new THREE.RingGeometry(s*0.42, s, 32);
+        case 'triangle': {
+            const sh = new THREE.Shape();
+            const r = s;
+            sh.moveTo(0, r);
+            sh.lineTo(-r * 0.866, -r * 0.5);
+            sh.lineTo(r * 0.866, -r * 0.5);
+            sh.closePath();
+            return new THREE.ShapeGeometry(sh);
+        }
+        case 'longrect': {
+            const sh = new THREE.Shape();
+            const w = s * 0.35;
+            const h = s * 1.2;
+            sh.moveTo(-w, -h); sh.lineTo(w, -h); sh.lineTo(w, h); sh.lineTo(-w, h);
+            sh.closePath();
+            return new THREE.ShapeGeometry(sh);
+        }
         case 'petal': {
             const sh = new THREE.Shape();
             sh.moveTo(0, s);
@@ -263,11 +280,11 @@ const projectionFragmentShader = `
     varying vec3 vNormal;
 
     void main() {
-        // Ambient + diffuse — darker base so coloured light-gel projections pop
-        vec3 ambient = vec3(0.55);
+        // Ambient + diffuse â€” darker base so coloured light-gel projections pop
+        vec3 ambient = vec3(0.85);
         vec3 lightDir = normalize(vec3(0.3, 1.0, 0.2));
         float diff = max(dot(normalize(vNormal), lightDir), 0.0);
-        vec3 base = uBaseColor * (ambient + vec3(0.30) * diff) * 0.52;
+        vec3 base = uBaseColor * (ambient + vec3(0.25) * diff) * 1.0;
 
         // Ray from light to this pixel
         vec3 toPixel = vWorldPosition - uLightPos;
@@ -301,9 +318,12 @@ const projectionFragmentShader = `
 
             if (dist < projRadius) {
                 float alpha = 1.0 - smoothstep(projRadius - edge, projRadius, dist);
-                float strength = alpha * 0.30 * uProjIntensity;
+                // White (text) cutouts project 50% dimmer
+                float isWhite = step(0.95, (cCol.r + cCol.g + cCol.b) / 3.0);
+                float dim = 1.0 - isWhite * 0.5;
+                float strength = alpha * 0.30 * uProjIntensity * dim;
                 // Saturated colours that mix where they overlap (red+blue=magenta, etc.)
-                projColor += cCol * alpha * 1.15;
+                projColor += cCol * alpha * 1.15 * dim;
                 // Over-operator keeps brightness growth gentle even with many overlaps
                 projAlpha += (1.0 - projAlpha) * strength;
             }
@@ -311,7 +331,7 @@ const projectionFragmentShader = `
 
         projColor = min(projColor, vec3(1.15));
         projAlpha = min(projAlpha, 0.80);
-        // Soft additive blend — like transparent coloured gels casting light on a white wall
+        // Soft additive blend â€” like transparent coloured gels casting light on a white wall
         vec3 finalColor = base + projColor * projAlpha * 0.85;
         // Hard ceiling prevents blown-out white even with 5-10 overlapping projections
         finalColor = min(finalColor, vec3(0.95));
@@ -333,7 +353,7 @@ function makeRoomUniforms(baseColorHex) {
 }
 
 const wallShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
+    uniforms: makeRoomUniforms(0xeeeeee),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader,
     side: THREE.BackSide
@@ -344,7 +364,7 @@ const floorShaderMat = new THREE.ShaderMaterial({
     fragmentShader: projectionFragmentShader
 });
 const ceilingShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xbbbbbb),
+    uniforms: makeRoomUniforms(0xffffff),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader
 });
@@ -370,9 +390,24 @@ function buildMobile() {
         str.position.y = -stringLen / 2;
         group.add(str);
 
+        // Random fluorescent colour selection for audio / image / video
+        let paperColor = def.color;
+        let glowColor = def.glow;
+        if (msg.type === 'audio') {
+            paperColor = 0x00ffff;
+            glowColor  = 0x00e0e0;
+        } else if (msg.type === 'image') {
+            paperColor = 0xffff91;
+            glowColor  = 0xe0e060;
+        } else if (msg.type === 'video') {
+            const isPink = Math.random() > 0.5;
+            paperColor = isPink ? 0xff91e7 : 0xcc91ff;
+            glowColor  = isPink ? 0xe070c0 : 0xa070d0;
+        }
+
         // Paper — iridescent holographic plastic gel
         const paperMat = new THREE.MeshPhysicalMaterial({
-            color: def.color, emissive: def.color, emissiveIntensity: 0.15,
+            color: paperColor, emissive: paperColor, emissiveIntensity: 0.15,
             roughness: 0.22, metalness: 0.02, transmission: 0.70, thickness: 0.35,
             transparent: true, opacity: 0.78, side: THREE.DoubleSide,
             clearcoat: 0.9, clearcoatRoughness: 0.08,
@@ -380,8 +415,9 @@ function buildMobile() {
             iridescenceThicknessRange: [100, 400]
         });
         const paper = new THREE.Mesh(makeShape(def.shape), paperMat);
+        if (msg.type === 'text') paper.scale.set(0.8, 0.8, 0.8);
         paper.position.y = -pos.stringLen;
-        paper.userData = { idx: i, msg, def, origY: -pos.stringLen, origEmissive: 0.15 };
+        paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.15 };
         group.add(paper);
 
         // Hitbox
@@ -421,7 +457,7 @@ const glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 6.3), glowMat);
 glowMesh.position.copy(projMesh.position); glowMesh.position.x += 0.06; glowMesh.rotation.y = Math.PI / 2;
 scene.add(glowMesh);
 
-// Media plane — sits slightly in front of projection for images/video
+// Media plane â€” sits slightly in front of projection for images/video
 // Smaller and positioned lower so it never covers title or caption
 const mediaPlaneMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
 const mediaPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.0), mediaPlaneMat);
@@ -506,7 +542,7 @@ function setDetailMedia(msg) {
         currentAudioEl = audio;
         audio.play().catch(() => {});
     }
-    // text/wish — media plane stays hidden, canvas projection shows text/ui
+    // text/wish â€” media plane stays hidden, canvas projection shows text/ui
 }
 
 function drawProjection(msg, def) {
@@ -613,10 +649,10 @@ function drawProjection(msg, def) {
         ctx.globalAlpha = 1;
     }
 
-    // Date / Author — same style as body text, slightly smaller
+    // Date / Author â€” same style as body text, slightly smaller
     ctx.font = '500 22px Inter, sans-serif';
     ctx.fillStyle = '#444444';
-    ctx.fillText(`${msg.date}  ·  ${msg.author || 'Anonymous'}`, cx, py + panelH - pad - 16);
+    ctx.fillText(`${msg.date}  Â·  ${msg.author || 'Anonymous'}`, cx, py + panelH - pad - 16);
 
     projTex.needsUpdate = true;
 }
@@ -891,7 +927,7 @@ function animate() {
     requestAnimationFrame(animate);
     const time = clock.getElapsedTime();
 
-    // Mobile rotation — panorama: very slow; detail: 10x slower
+    // Mobile rotation â€” panorama: very slow; detail: 10x slower
     if (!rotT) {
         const rotSpeed = viewMode === 'detail' ? 0.00015 : 0.0015;
         mobileGroup.rotation.y += rotSpeed;
@@ -978,8 +1014,8 @@ window.addEventListener('resize', () => {
 // ============================================
 // SUPABASE INTEGRATION
 // ============================================
-const SUPABASE_URL = 'https://kggcyurkabnxtqfzfzfqexsb.supabase.co';
-const SUPABASE_ANON_KEY = 'publishable_fnGMVGVQdwfNLE1o_QezFw_BVPN8Gm5';
+const SUPABASE_URL = 'https://kggcyurkabnxtqfzfqex.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtnZ2N5dXJrYWJueHRxZnpmcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0OTM0OTAsImV4cCI6MjA5MjA2OTQ5MH0.0Nx_1pDCgR8eBf9S1O_2e4kuU4iW3H610322cK1eabg';
 
 let sbClient = null;
 try {
