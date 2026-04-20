@@ -2,6 +2,49 @@
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ============================================
+// COLOR UTILS — desaturate hex by factor (0–1)
+// ============================================
+function hexToHsl(hex) {
+    const r = ((hex >> 16) & 0xff) / 255;
+    const g = ((hex >> 8) & 0xff) / 255;
+    const b = (hex & 0xff) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    return { h, s, l };
+}
+function hslToHex({ h, s, l }) {
+    const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const nr = Math.round(hue2rgb(p, q, h + 1/3) * 255);
+    const ng = Math.round(hue2rgb(p, q, h) * 255);
+    const nb = Math.round(hue2rgb(p, q, h - 1/3) * 255);
+    return (nr << 16) | (ng << 8) | nb;
+}
+function desaturateHex(hex, factor = 0.20) {
+    const hsl = hexToHsl(hex);
+    hsl.s = Math.max(0, hsl.s * (1 - factor));
+    return hslToHex(hsl);
+}
+
+// ============================================
 // SEEN TRACKING â€” which cutouts have been clicked
 // ============================================
 let seenIndices = new Set();
@@ -22,10 +65,10 @@ function markSeen(idx) {
 // ============================================
 const SHAPE_DEFS = {
     text:  { shape: 'circle',   color: 0xffffff, glow: 0xf0f0f0, label: 'Text' },
-    audio: { shape: 'triangle', color: 0x00ffff, glow: 0x00e0e0, label: 'Audio' },
-    image: { shape: 'longrect', color: 0xffff00, glow: 0xe0e000, label: 'Image' },
-    video: { shape: 'ring',     color: 0xff00ff, glow: 0xe000e0, label: 'Video' },
-    wish:  { shape: 'petal',    color: 0xb8ffd0, glow: 0x90f0b8, label: 'Wish' }
+    audio: { shape: 'triangle', color: desaturateHex(0x00ffff), glow: desaturateHex(0x00e0e0), label: 'Audio' },
+    image: { shape: 'longrect', color: desaturateHex(0xffff00), glow: desaturateHex(0xe0e000), label: 'Image' },
+    video: { shape: 'ring',     color: desaturateHex(0xff00ff), glow: desaturateHex(0xe000e0), label: 'Video' },
+    wish:  { shape: 'petal',    color: desaturateHex(0xb8ffd0), glow: desaturateHex(0x90f0b8), label: 'Wish' }
 };
 
 function formatDate(ts) {
@@ -87,13 +130,13 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.95;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xffffff);
-scene.fog = new THREE.Fog(0xffffff, 12, 24);
+scene.background = new THREE.Color(0xf5f2ee);
+scene.fog = new THREE.Fog(0xf5f2ee, 10, 22);
 
 const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 2.2, 9.5);
@@ -111,11 +154,11 @@ controls.target.set(0, 1.0, 0);
 // ============================================
 // MATERIALS
 // ============================================
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0, side: THREE.BackSide });
-const floorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
-const ringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 });
-const stringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.85 });
-const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.85 });
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xeae7e3, roughness: 0.65, metalness: 0, side: THREE.BackSide });
+const floorMat = new THREE.MeshStandardMaterial({ color: 0xf5f2ee, roughness: 0.92, metalness: 0 });
+const ringMat = new THREE.MeshStandardMaterial({ color: 0xf0eeeb, roughness: 0.35, metalness: 0.06 });
+const stringMat = new THREE.MeshStandardMaterial({ color: 0xeae7e3, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.82 });
+const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.80 });
 
 // ============================================
 // ROOM
@@ -140,6 +183,36 @@ scene.add(ceiling);
 // ============================================
 const mobileGroup = new THREE.Group();
 scene.add(mobileGroup);
+
+// ============================================
+// DUST PARTICLES — floating motes in light beam (gallery atmosphere)
+// ============================================
+const DUST_COUNT = 120;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(DUST_COUNT * 3);
+const dustSpeed = new Float32Array(DUST_COUNT * 3);
+for (let i = 0; i < DUST_COUNT; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 2.5;
+    dustPos[i*3]   = Math.cos(theta) * radius;
+    dustPos[i*3+1] = RING_Y - 0.3 + (Math.random() - 0.5) * 3.5;
+    dustPos[i*3+2] = Math.sin(theta) * radius;
+    dustSpeed[i*3]   = (Math.random() - 0.5) * 0.0008;
+    dustSpeed[i*3+1] = (Math.random() - 0.5) * 0.0006;
+    dustSpeed[i*3+2] = (Math.random() - 0.5) * 0.0008;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({
+    color: 0xfff5ee,
+    size: 0.018,
+    transparent: true,
+    opacity: 0.28,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true
+});
+const dustParticles = new THREE.Points(dustGeo, dustMat);
+scene.add(dustParticles);
 
 const ring = new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.032, 12, 72), ringMat);
 ring.rotation.x = Math.PI / 2;
@@ -179,10 +252,15 @@ const centerLight = new THREE.PointLight(0xfff5ee, 5, 16, 1.3);
 centerLight.position.set(0, RING_Y - 0.25, 0);
 scene.add(centerLight);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const fill = new THREE.DirectionalLight(0xf0f0f0, 0.25);
+scene.add(new THREE.AmbientLight(0xfff8f0, 0.55));
+const fill = new THREE.DirectionalLight(0xf0ece6, 0.30);
 fill.position.set(-4, 5, -4);
 scene.add(fill);
+
+// Elegant rim light for cutout edge definition
+const rimLight = new THREE.DirectionalLight(0xfff0e0, 0.35);
+rimLight.position.set(4, 3, 4);
+scene.add(rimLight);
 
 // ============================================
 // SHAPE BUILDERS
@@ -353,18 +431,18 @@ function makeRoomUniforms(baseColorHex) {
 }
 
 const wallShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xeeeeee),
+    uniforms: makeRoomUniforms(0xeae7e3),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader,
     side: THREE.BackSide
 });
 const floorShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
+    uniforms: makeRoomUniforms(0xf5f2ee),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader
 });
 const ceilingShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
+    uniforms: makeRoomUniforms(0xf5f2ee),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader
 });
@@ -390,34 +468,33 @@ function buildMobile() {
         str.position.y = -stringLen / 2;
         group.add(str);
 
-        // Random fluorescent colour selection for audio / image / video
+        // Desaturated elegant colour selection for audio / image / video
         let paperColor = def.color;
         let glowColor = def.glow;
         if (msg.type === 'audio') {
-            paperColor = 0x00ffff;
-            glowColor  = 0x00e0e0;
+            paperColor = desaturateHex(0x00ffff);
+            glowColor  = desaturateHex(0x00e0e0);
         } else if (msg.type === 'image') {
-            paperColor = 0xffff91;
-            glowColor  = 0xe0e060;
+            paperColor = desaturateHex(0xffff91);
+            glowColor  = desaturateHex(0xe0e060);
         } else if (msg.type === 'video') {
             const isPink = Math.random() > 0.5;
-            paperColor = isPink ? 0xff91e7 : 0xcc91ff;
-            glowColor  = isPink ? 0xe070c0 : 0xa070d0;
+            paperColor = isPink ? desaturateHex(0xff91e7) : desaturateHex(0xcc91ff);
+            glowColor  = isPink ? desaturateHex(0xe070c0) : desaturateHex(0xa070d0);
         }
 
-        // Paper — iridescent holographic plastic gel
+        // Paper — frosted acrylic with subtle sheen (gallery-grade)
         const paperMat = new THREE.MeshPhysicalMaterial({
-            color: paperColor, emissive: paperColor, emissiveIntensity: 0.15,
-            roughness: 0.22, metalness: 0.02, transmission: 0.70, thickness: 0.35,
-            transparent: true, opacity: 0.78, side: THREE.DoubleSide,
-            clearcoat: 0.9, clearcoatRoughness: 0.08,
-            iridescence: 1.0, iridescenceIOR: 1.3,
-            iridescenceThicknessRange: [100, 400]
+            color: paperColor, emissive: paperColor, emissiveIntensity: 0.12,
+            roughness: 0.38, metalness: 0.0, transmission: 0.45, thickness: 0.20,
+            transparent: true, opacity: 0.84, side: THREE.DoubleSide,
+            clearcoat: 0.25, clearcoatRoughness: 0.35,
+            sheen: 0.45, sheenRoughness: 0.45, sheenColor: new THREE.Color(0xffffff)
         });
         const paper = new THREE.Mesh(makeShape(def.shape), paperMat);
         if (msg.type === 'text') paper.scale.set(0.8, 0.8, 0.8);
         paper.position.y = -pos.stringLen;
-        paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.15 };
+        paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.12 };
         group.add(paper);
 
         // Hitbox
@@ -999,6 +1076,24 @@ function animate() {
     if (currentMediaTex && currentMediaTex.isVideoTexture && currentVideoEl && !currentVideoEl.paused) {
         currentMediaTex.needsUpdate = true;
     }
+
+    // Animate dust particles
+    const dPos = dustParticles.geometry.attributes.position.array;
+    for (let i = 0; i < DUST_COUNT; i++) {
+        dPos[i*3]   += dustSpeed[i*3]   + Math.sin(time * 0.3 + i) * 0.00015;
+        dPos[i*3+1] += dustSpeed[i*3+1] + Math.cos(time * 0.2 + i * 0.7) * 0.00012;
+        dPos[i*3+2] += dustSpeed[i*3+2] + Math.sin(time * 0.25 + i * 1.3) * 0.00015;
+        // Soft boundary wrap
+        const dx = dPos[i*3], dy = dPos[i*3+1] - RING_Y, dz = dPos[i*3+2];
+        if (dx*dx + dy*dy + dz*dz > 14) {
+            const theta = Math.random() * Math.PI * 2;
+            const r = Math.random() * 1.2;
+            dPos[i*3]   = Math.cos(theta) * r;
+            dPos[i*3+1] = RING_Y - 0.3 + (Math.random() - 0.5) * 2;
+            dPos[i*3+2] = Math.sin(theta) * r;
+        }
+    }
+    dustParticles.geometry.attributes.position.needsUpdate = true;
 
     updateCam();
     controls.update();
