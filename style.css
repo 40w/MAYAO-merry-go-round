@@ -55,6 +55,7 @@ body.loaded .legend { opacity: 0.8; pointer-events: auto; }
     cursor: default;
 }
 .legend-shape { width: 14px; height: 14px; color: rgba(38,36,37,0.55); }
+.cutout-count { font-weight: 500; color: rgba(38,36,37,0.45); margin-left: 4px; }
 
 /* Corner triggers */
 .corner-trigger {

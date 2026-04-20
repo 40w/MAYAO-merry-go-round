@@ -92,7 +92,7 @@ function normalizeMessage(m) {
         title = content.slice(0, 36) || 'Untitled';
         content = m.media_url || m.mediaUrl || m.mediaData || content || '';
     }
-    return { id: m.id || Date.now(), type, title, content, author: m.author || 'Anonymous', date };
+    return { id: m.id || Date.now(), type, title, content, author: m.author || 'Anonymous', date, timestamp: m.timestamp };
 }
 
 let messages = [];
@@ -101,6 +101,53 @@ let selectedIdx = -1;
 let demoMode = false;
 let demoTimer = null;
 let demoIndex = 0;
+
+function spreadMessagesByType(msgs) {
+    const textItems = [];
+    const colorItems = [];
+    msgs.forEach(m => {
+        if ((m.type || 'text') === 'text') textItems.push(m);
+        else colorItems.push(m);
+    });
+    // Shuffle each group for randomness
+    for (let arr of [textItems, colorItems]) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    }
+
+    if (colorItems.length === 0) return textItems;
+
+    // Position-fill method: place colours at evenly spaced positions,
+    // then fill gaps with text. This guarantees colours are spread out
+    // and text streak length is bounded by gap size.
+    const n = msgs.length;
+    const result = new Array(n);
+    const filled = new Array(n).fill(false);
+
+    // Place colour items at evenly spaced positions
+    const colorStep = n / colorItems.length;
+    colorItems.forEach((m, i) => {
+        let pos = Math.min(Math.round(i * colorStep), n - 1);
+        while (pos < n && filled[pos]) pos++;
+        if (pos < n) {
+            result[pos] = m;
+            filled[pos] = true;
+        }
+    });
+
+    // Fill remaining positions with text items
+    let textIdx = 0;
+    for (let i = 0; i < n && textIdx < textItems.length; i++) {
+        if (!filled[i]) {
+            result[i] = textItems[textIdx++];
+            filled[i] = true;
+        }
+    }
+
+    return result;
+}
 
 function assignPositions() {
     const rows = 3;
@@ -324,7 +371,7 @@ const hitboxes = [];
 // PROJECTION SHADER (shared by wall / floor / ceiling)
 // Ray-marches from light through each cutout to the surface pixel.
 // ============================================
-const MAX_CUTOUTS = 12;
+const MAX_CUTOUTS = 30;
 const projectionUniforms = {
     uLightPos: { value: centerLight.position },
     uCutoutCount: { value: 0 },
@@ -349,9 +396,9 @@ const projectionVertexShader = `
 const projectionFragmentShader = `
     uniform vec3 uLightPos;
     uniform int uCutoutCount;
-    uniform vec3 uCutoutPositions[12];
-    uniform vec3 uCutoutColors[12];
-    uniform float uCutoutRadii[12];
+    uniform vec3 uCutoutPositions[30];
+    uniform vec3 uCutoutColors[30];
+    uniform float uCutoutRadii[30];
     uniform vec3 uBaseColor;
     uniform float uProjIntensity;
     varying vec3 vWorldPosition;
@@ -372,7 +419,7 @@ const projectionFragmentShader = `
         vec3 projColor = vec3(0.0);
         float projAlpha = 0.0;
 
-        for (int i = 0; i < 12; i++) {
+        for (int i = 0; i < 30; i++) {
             if (i >= uCutoutCount) break;
 
             vec3 cPos = uCutoutPositions[i];
@@ -390,9 +437,9 @@ const projectionFragmentShader = `
             vec3 hit = uLightPos + rayDir * t;
             float dist = distance(hit, cPos);
 
-            // Large, soft projection like coloured light-gels in a gallery
-            float projRadius = cRadius * (1.0 + t * 1.5);
-            float edge = projRadius * 0.55; // very soft, atmospheric falloff
+            // Moderate, focused projection per cutout — 20 light-gels around 360°
+            float projRadius = cRadius * (1.0 + t * 1.5) * 0.866;
+            float edge = projRadius * 0.72; // very soft, dreamy falloff
 
             if (dist < projRadius) {
                 float alpha = 1.0 - smoothstep(projRadius - edge, projRadius, dist);
@@ -407,9 +454,10 @@ const projectionFragmentShader = `
             }
         }
 
-        projColor = min(projColor, vec3(1.15));
-        projAlpha = min(projAlpha, 0.80);
-        // Soft additive blend â€” like transparent coloured gels casting light on a white wall
+        // Cap totals so overlaps get brighter but never blow out into white mush
+        projColor = min(projColor, vec3(1.0));
+        projAlpha = min(projAlpha, 0.60);
+        // Soft additive blend — like transparent coloured gels casting light on a white wall
         vec3 finalColor = base + projColor * projAlpha * 0.85;
         // Hard ceiling prevents blown-out white even with 5-10 overlapping projections
         finalColor = min(finalColor, vec3(0.95));
@@ -438,7 +486,7 @@ const wallShaderMat = new THREE.ShaderMaterial({
     depthWrite: false
 });
 const floorShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xf5f2ee),
+    uniforms: makeRoomUniforms(0xdfdcd7),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader
 });
@@ -451,6 +499,22 @@ const ceilingShaderMat = new THREE.ShaderMaterial({
 wall.material = wallShaderMat;
 floor.material = floorShaderMat;
 ceiling.material = ceilingShaderMat;
+
+// Firefly glow texture — soft radial gradient for particle sprites
+function createFireflyTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 255, 235, 1)');
+    grad.addColorStop(0.25, 'rgba(255, 250, 190, 0.55)');
+    grad.addColorStop(0.55, 'rgba(255, 240, 150, 0.15)');
+    grad.addColorStop(1, 'rgba(255, 230, 120, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(canvas);
+}
+const fireflyTex = createFireflyTexture();
 
 function buildMobile() {
     cutouts.forEach(c => { mobileGroup.remove(c.group); });
@@ -499,6 +563,30 @@ function buildMobile() {
         paper.rotation.y = (Math.random() - 0.5) * Math.PI * 1.6;
         paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.12, isHovered: false };
         group.add(paper);
+
+        // Hint particles orbiting unselected cutouts to invite clicks
+        const particles = [];
+        for (let j = 0; j < 5; j++) {
+            const pMat = new THREE.SpriteMaterial({
+                map: fireflyTex,
+                color: new THREE.Color(0xfff8d0),
+                transparent: true,
+                opacity: 0.90,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const pMesh = new THREE.Sprite(pMat);
+            pMesh.scale.set(0.14, 0.14, 1);
+            paper.add(pMesh);
+            particles.push({
+                mesh: pMesh,
+                baseAngle: (j / 5) * Math.PI * 2,
+                speed: 0.8 + Math.random() * 0.6,
+                radius: 0.38 + Math.random() * 0.12,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+        paper.userData.particles = particles;
 
         // Hitbox
         const hb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
@@ -573,6 +661,12 @@ function fitMediaPlane(mediaW, mediaH) {
     }
 }
 
+function extractYouTubeId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
 function setDetailMedia(msg) {
     // Clean up previous media
     if (currentVideoEl) { currentVideoEl.pause(); currentVideoEl = null; }
@@ -598,31 +692,48 @@ function setDetailMedia(msg) {
             targetMediaOpacity = 0;
         });
     } else if (msg.type === 'video' && msg.content) {
-        const video = document.createElement('video');
-        video.crossOrigin = 'anonymous';
-        video.src = msg.content;
-        video.loop = false;
-        video.muted = false; // try with sound first
-        video.playsInline = true;
-        currentVideoEl = video;
-        const vTex = new THREE.VideoTexture(video);
-        vTex.colorSpace = THREE.SRGBColorSpace;
-        currentMediaTex = vTex;
-        mediaPlaneMat.map = vTex;
-        targetMediaOpacity = 0.92;
-        mediaPlaneMat.needsUpdate = true;
-        video.addEventListener('loadedmetadata', () => {
-            if (video.videoWidth && video.videoHeight) {
-                fitMediaPlane(video.videoWidth, video.videoHeight);
-            }
-        }, { once: true });
-        video.load();
-        // Play immediately within user-gesture stack (works when entered via click)
-        video.play().catch(() => {
-            // Fallback to muted autoplay for non-interaction contexts (demo mode)
-            video.muted = true;
-            video.play().catch(() => {});
-        });
+        const ytId = extractYouTubeId(msg.content);
+        if (ytId) {
+            // YouTube video: show thumbnail on mediaPlane, iframe plays in modal
+            texLoader.load(`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`, (tex) => {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                currentMediaTex = tex;
+                mediaPlaneMat.map = tex;
+                targetMediaOpacity = 0.92;
+                mediaPlaneMat.needsUpdate = true;
+                fitMediaPlane(16, 9);
+            }, undefined, () => {
+                mediaPlaneMat.map = null;
+                targetMediaOpacity = 0;
+            });
+        } else {
+            // Direct video URL
+            const video = document.createElement('video');
+            video.crossOrigin = 'anonymous';
+            video.src = msg.content;
+            video.loop = false;
+            video.muted = false; // try with sound first
+            video.playsInline = true;
+            currentVideoEl = video;
+            const vTex = new THREE.VideoTexture(video);
+            vTex.colorSpace = THREE.SRGBColorSpace;
+            currentMediaTex = vTex;
+            mediaPlaneMat.map = vTex;
+            targetMediaOpacity = 0.92;
+            mediaPlaneMat.needsUpdate = true;
+            video.addEventListener('loadedmetadata', () => {
+                if (video.videoWidth && video.videoHeight) {
+                    fitMediaPlane(video.videoWidth, video.videoHeight);
+                }
+            }, { once: true });
+            video.load();
+            // Play immediately within user-gesture stack (works when entered via click)
+            video.play().catch(() => {
+                // Fallback to muted autoplay for non-interaction contexts (demo mode)
+                video.muted = true;
+                video.play().catch(() => {});
+            });
+        }
     } else if (msg.type === 'audio' && msg.content) {
         const audio = document.createElement('audio');
         audio.crossOrigin = 'anonymous';
@@ -763,7 +874,7 @@ function roundRect(ctx, x, y, w, h, radius) {
 // ============================================
 // CAMERA
 // ============================================
-const CAM_PAN = { pos: new THREE.Vector3(0, 0.6, 9.5), target: new THREE.Vector3(0, 0.0, 0), fov: 48 };
+const CAM_PAN = { pos: new THREE.Vector3(0, 0.7, 9.5), target: new THREE.Vector3(0, 2.0, 0), fov: 48 };
 const CAM_DET = { pos: new THREE.Vector3(8.5, 0.5, 7.5), target: new THREE.Vector3(-5.5, 2.2, 0), fov: 40 };
 
 let camT = null;
@@ -937,7 +1048,12 @@ function openDetailModal(msg, def) {
     if (msg.type === 'image') {
         mediaHtml = `<div class="detail-media"><img src="${msg.content}" alt="${escapeHtml(msg.title)}" onerror="this.style.display='none'"></div>`;
     } else if (msg.type === 'video') {
-        mediaHtml = `<div class="detail-media"><video controls autoplay src="${msg.content}"></video></div>`;
+        const ytId = extractYouTubeId(msg.content);
+        if (ytId) {
+            mediaHtml = `<div class="detail-media"><iframe width="100%" height="360" src="https://www.youtube.com/embed/${ytId}?autoplay=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+        } else {
+            mediaHtml = `<div class="detail-media"><video controls autoplay src="${msg.content}"></video></div>`;
+        }
     } else if (msg.type === 'audio') {
         mediaHtml = `<div class="detail-media"><audio controls autoplay src="${msg.content}"></audio></div>`;
     } else {
@@ -959,8 +1075,10 @@ window.closeDetailModal = function() {
     document.getElementById('detailModal').classList.remove('active');
     const aud = document.querySelector('#detailModal audio');
     const vid = document.querySelector('#detailModal video');
+    const iframe = document.querySelector('#detailModal iframe');
     if (aud) aud.pause();
     if (vid) vid.pause();
+    if (iframe) iframe.src = ''; // Stop YouTube iframe playback
     // Resume wall media if still in detail mode
     if (viewMode === 'detail') {
         if (currentVideoEl) currentVideoEl.play().catch(() => {});
@@ -992,12 +1110,37 @@ function fadeAudio(mediaEl, duration = 1000) {
     })();
 }
 
+function findClosestCutoutToWall() {
+    const lookDir = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
+    let lookAngle = Math.atan2(lookDir.z, lookDir.x);
+    if (lookAngle < 0) lookAngle += Math.PI * 2;
+    let bestIdx = 0;
+    let bestDiff = Infinity;
+    cutouts.forEach((c, i) => {
+        const diff = Math.abs(c.pos.angle - lookAngle);
+        const wrappedDiff = Math.min(diff, Math.PI * 2 - diff);
+        if (wrappedDiff < bestDiff) {
+            bestDiff = wrappedDiff;
+            bestIdx = i;
+        }
+    });
+    return bestIdx;
+}
+
 function startDemo() {
     if (!cutouts.length) return;
     demoMode = true;
     document.getElementById('demoBtn').classList.add('active');
     document.getElementById('demoIcon').innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>';
-    demoIndex = 0;
+
+    // Start from current detail message if in detail mode, otherwise from closest-to-wall cutout
+    if (viewMode === 'detail' && selectedIdx >= 0) {
+        const idx = cutouts.findIndex(c => c.idx === selectedIdx);
+        demoIndex = idx >= 0 ? idx : findClosestCutoutToWall();
+    } else {
+        demoIndex = findClosestCutoutToWall();
+    }
+
     showDemoCutout();
 }
 
@@ -1029,8 +1172,23 @@ function loadDemoCutout() {
 function scheduleDemoTimer() {
     const c = cutouts[selectedIdx];
     if (!c) return;
-    const delay = (c.msg.type === 'audio' || c.msg.type === 'video') ? 10000 : 5500;
-    demoTimer = setTimeout(showDemoCutout, delay);
+
+    if (c.msg.type === 'audio' || c.msg.type === 'video') {
+        // 15s safety timeout; if media ends earlier, switch 1s after ending
+        demoTimer = setTimeout(showDemoCutout, 15000);
+
+        const mediaEl = c.msg.type === 'video' ? currentVideoEl : currentAudioEl;
+        if (mediaEl) {
+            const onEnded = () => {
+                mediaEl.removeEventListener('ended', onEnded);
+                clearTimeout(demoTimer);
+                demoTimer = setTimeout(showDemoCutout, 1000);
+            };
+            mediaEl.addEventListener('ended', onEnded);
+        }
+    } else {
+        demoTimer = setTimeout(showDemoCutout, 5500);
+    }
 }
 
 function stopDemo() {
@@ -1118,6 +1276,28 @@ function animate() {
             c.group.position.x += (tx - gx) * 0.04;
             c.group.position.z += (tz - gz) * 0.04;
         }
+
+        // Update hint particles + gentle paper flash for recent cutouts
+        const msgTimestamp = c.msg.timestamp ? new Date(c.msg.timestamp).getTime() : 0;
+        const isRecent = msgTimestamp > 0 && (Date.now() - msgTimestamp) < 5 * 60 * 1000;
+        if (p.userData.particles) {
+            const showParticles = isRecent;
+            p.userData.particles.forEach((pt, pi) => {
+                pt.mesh.visible = showParticles;
+                if (!showParticles) return;
+                const angle = pt.baseAngle + time * pt.speed;
+                pt.mesh.position.x = Math.cos(angle) * pt.radius;
+                pt.mesh.position.z = Math.sin(angle) * pt.radius;
+                pt.mesh.position.y = Math.sin(time * 1.8 + pt.phase) * 0.08;
+                pt.mesh.material.opacity = 0.70 + Math.sin(time * 2.5 + pt.phase) * 0.28;
+            });
+        }
+        // Slow gentle flash on the paper itself for new messages
+        if (isRecent && i !== selectedIdx && viewMode !== 'detail') {
+            const flash = Math.sin(time * 1.6 + i * 0.7) * 0.5 + 0.5;
+            p.material.emissiveIntensity = 0.12 + flash * 0.35;
+            p.material.opacity = 0.84 + flash * 0.12;
+        }
     });
 
     // Sync cutout count to shader for ray-traced projections
@@ -1198,7 +1378,10 @@ function animate() {
 }
 
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.aspect = aspect;
+    // Portrait: increase FOV so the cylindrical wall stays fully visible
+    camera.fov = aspect < 1 ? Math.min(48 / Math.sqrt(aspect), 75) : 48;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
@@ -1232,6 +1415,7 @@ async function loadMessagesFromSupabase() {
 // ============================================
 async function init() {
     messages = await loadMessagesFromSupabase();
+    messages = spreadMessagesByType(messages);
     assignPositions();
     buildMobile();
     document.getElementById('cutoutCount').textContent = messages.length;
@@ -1248,7 +1432,7 @@ setInterval(async () => {
     if (viewMode === 'detail') return; // don't refresh while reading
     const fresh = await loadMessagesFromSupabase();
     if (fresh.length !== messages.length) {
-        messages = fresh;
+        messages = spreadMessagesByType(fresh);
         assignPositions();
         buildMobile();
         document.getElementById('cutoutCount').textContent = messages.length;
