@@ -111,7 +111,7 @@ function assignPositions() {
         msg._pos = {
             angle: (idx / perRow) * Math.PI * 2 + row * 0.35,
             y: 2.0 - 0.35 - row * 0.65,
-            stringLen: 0.7 + row * 0.45 + Math.random() * 0.25,
+            stringLen: (0.7 + row * 0.45 + Math.random() * 0.25) * 0.9,
             row
         };
     });
@@ -158,7 +158,7 @@ const wallMat = new THREE.MeshStandardMaterial({ color: 0xeae7e3, roughness: 0.6
 const floorMat = new THREE.MeshStandardMaterial({ color: 0xf5f2ee, roughness: 0.92, metalness: 0 });
 const ringMat = new THREE.MeshStandardMaterial({ color: 0xf0eeeb, roughness: 0.35, metalness: 0.06 });
 const stringMat = new THREE.MeshStandardMaterial({ color: 0xeae7e3, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.82 });
-const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.80 });
+const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.95 });
 
 // ============================================
 // ROOM
@@ -242,9 +242,9 @@ function createOrbGlowTexture() {
     return new THREE.CanvasTexture(cvs);
 }
 const orbGlowTex = createOrbGlowTexture();
-const orbGlowMat = new THREE.SpriteMaterial({ map: orbGlowTex, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+const orbGlowMat = new THREE.SpriteMaterial({ map: orbGlowTex, transparent: true, opacity: 0.40, blending: THREE.AdditiveBlending, depthWrite: false });
 const orbGlow = new THREE.Sprite(orbGlowMat);
-orbGlow.scale.set(2.8, 2.8, 1);
+orbGlow.scale.set(2.2, 2.2, 1);
 orbGlow.position.copy(lightOrb.position);
 mobileGroup.add(orbGlow);
 
@@ -434,7 +434,8 @@ const wallShaderMat = new THREE.ShaderMaterial({
     uniforms: makeRoomUniforms(0xeae7e3),
     vertexShader: projectionVertexShader,
     fragmentShader: projectionFragmentShader,
-    side: THREE.BackSide
+    side: THREE.BackSide,
+    depthWrite: false
 });
 const floorShaderMat = new THREE.ShaderMaterial({
     uniforms: makeRoomUniforms(0xf5f2ee),
@@ -492,9 +493,11 @@ function buildMobile() {
             sheen: 0.45, sheenRoughness: 0.45, sheenColor: new THREE.Color(0xffffff)
         });
         const paper = new THREE.Mesh(makeShape(def.shape), paperMat);
-        if (msg.type === 'text') paper.scale.set(0.8, 0.8, 0.8);
+        if (msg.type === 'text') paper.scale.set(0.7, 0.7, 0.7);
         paper.position.y = -pos.stringLen;
-        paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.12 };
+        // Random initial facing so cutouts don't all look identical
+        paper.rotation.y = (Math.random() - 0.5) * Math.PI * 1.6;
+        paper.userData = { idx: i, msg, def: { ...def, color: paperColor, glow: glowColor }, origY: -pos.stringLen, origEmissive: 0.12, isHovered: false };
         group.add(paper);
 
         // Hitbox
@@ -506,7 +509,16 @@ function buildMobile() {
 
         group.position.set(Math.cos(pos.angle)*RING_RADIUS, RING_Y, Math.sin(pos.angle)*RING_RADIUS);
         mobileGroup.add(group);
-        cutouts.push({ group, paper, msg, def, idx: i, pos: { ...pos, origY: -pos.stringLen } });
+        // Each cutout gets unique sway parameters for organic, non-uniform motion
+        cutouts.push({ group, paper, msg, def, idx: i, pos: { ...pos, origY: -pos.stringLen }, baseRotY: paper.rotation.y, sway: {
+            phase: Math.random() * Math.PI * 2,
+            speedX: 0.25 + Math.random() * 0.35,
+            speedY: 0.15 + Math.random() * 0.25,
+            speedZ: 0.35 + Math.random() * 0.45,
+            ampX: 0.02 + Math.random() * 0.02,
+            ampY: 0.04 + Math.random() * 0.05,
+            ampZ: 0.03 + Math.random() * 0.03
+        } });
     });
 }
 
@@ -524,20 +536,20 @@ projTex.colorSpace = THREE.SRGBColorSpace;
 const projMat = new THREE.MeshBasicMaterial({
     map: projTex, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false
 });
-const projMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.0, 4.5), projMat);
-projMesh.position.set(-ROOM_RADIUS * 0.82, 1.4, 0);
+const projMesh = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 5.625), projMat);
+projMesh.position.set(-ROOM_RADIUS * 0.95, 1.3, 0.5);
 projMesh.rotation.y = Math.PI / 2;
 scene.add(projMesh);
 
 const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
-const glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 6.3), glowMat);
-glowMesh.position.copy(projMesh.position); glowMesh.position.x += 0.06; glowMesh.rotation.y = Math.PI / 2;
+const glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 7.875), glowMat);
+glowMesh.position.copy(projMesh.position); glowMesh.position.x += 0.06; glowMesh.position.z += 0.02; glowMesh.rotation.y = Math.PI / 2;
 scene.add(glowMesh);
 
 // Media plane â€” sits slightly in front of projection for images/video
 // Smaller and positioned lower so it never covers title or caption
 const mediaPlaneMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
-const mediaPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 2.0), mediaPlaneMat);
+const mediaPlane = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 2.5), mediaPlaneMat);
 mediaPlane.position.copy(projMesh.position);
 mediaPlane.position.x += 0.04; // slightly in front of projMesh
 // centred vertically inside the 4:3 panel
@@ -551,7 +563,7 @@ let targetMediaOpacity = 0;
 const texLoader = new THREE.TextureLoader();
 
 function fitMediaPlane(mediaW, mediaH) {
-    const planeW = 2.8, planeH = 2.0;
+    const planeW = 3.5, planeH = 2.5;
     const mediaAspect = mediaW / mediaH;
     const planeAspect = planeW / planeH;
     if (mediaAspect > planeAspect) {
@@ -751,8 +763,8 @@ function roundRect(ctx, x, y, w, h, radius) {
 // ============================================
 // CAMERA
 // ============================================
-const CAM_PAN = { pos: new THREE.Vector3(0, 2.2, 9.5), target: new THREE.Vector3(0, 0.9, 0), fov: 48 };
-const CAM_DET = { pos: new THREE.Vector3(8.5, 2.0, 5.0), target: new THREE.Vector3(-4.5, 1.4, 0), fov: 40 };
+const CAM_PAN = { pos: new THREE.Vector3(0, 0.6, 9.5), target: new THREE.Vector3(0, 0.0, 0), fov: 48 };
+const CAM_DET = { pos: new THREE.Vector3(8.5, 0.5, 7.5), target: new THREE.Vector3(-5.5, 2.2, 0), fov: 40 };
 
 let camT = null;
 let rotT = null; // for rotating mobile to face wall
@@ -760,7 +772,7 @@ let rotT = null; // for rotating mobile to face wall
 function toMode(mode, dur = 1600) {
     viewMode = mode;
     const end = mode === 'detail' ? CAM_DET : CAM_PAN;
-    camT = { t0: performance.now(), dur, sp: camera.position.clone(), st: controls.target.clone(), sf: camera.fov, ep: end.pos, et: end.target, ef: end.fov };
+    camT = { t0: performance.now() + 400, dur, sp: camera.position.clone(), st: controls.target.clone(), sf: camera.fov, ep: end.pos, et: end.target, ef: end.fov };
     if (mode === 'detail') {
         controls.autoRotate = false;
         // Rotate mobile so selected cutout faces the wall (left side, angle PI)
@@ -773,7 +785,7 @@ function toMode(mode, dur = 1600) {
             while (diff > Math.PI) diff -= Math.PI*2;
             while (diff < -Math.PI) diff += Math.PI*2;
             const final = current + diff;
-            rotT = { t0: performance.now(), dur: 1200, sr: current, er: final };
+            rotT = { t0: performance.now() + 400, dur: 1200, sr: current, er: final };
             // Load media for wall projection
             const msg = messages[selectedIdx];
             if (msg) setDetailMedia(msg);
@@ -790,20 +802,22 @@ function toMode(mode, dur = 1600) {
 function updateCam() {
     if (!camT) return;
     const e = performance.now() - camT.t0;
+    if (e < 0) return; // wait for light transition to start first
     let t = Math.min(e / camT.dur, 1);
     t = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
     camera.position.lerpVectors(camT.sp, camT.ep, t);
     controls.target.lerpVectors(camT.st, camT.et, t);
     camera.fov = THREE.MathUtils.lerp(camT.sf, camT.ef, t);
     camera.updateProjectionMatrix();
-    if (viewMode === 'detail') { projMat.opacity = t*0.98; glowMat.opacity = 0.0; mediaPlaneMat.opacity = targetMediaOpacity * t; }
-    else { projMat.opacity = (1-t)*0.98; glowMat.opacity = 0.0; mediaPlaneMat.opacity = (1-t)*targetMediaOpacity; }
+    if (viewMode === 'detail') { projMat.opacity = t*0.98; mediaPlaneMat.opacity = targetMediaOpacity * t; }
+    else { projMat.opacity = (1-t)*0.98; mediaPlaneMat.opacity = (1-t)*targetMediaOpacity; }
     if (t >= 1) camT = null;
 }
 
 function updateMobileRot() {
     if (!rotT) return;
     const e = performance.now() - rotT.t0;
+    if (e < 0) return; // wait for light transition to start first
     let t = Math.min(e / rotT.dur, 1);
     t = 1 - Math.pow(1 - t, 3);
     mobileGroup.rotation.y = rotT.sr + (rotT.er - rotT.sr) * t;
@@ -829,34 +843,48 @@ function onMove(e) {
     const hits = raycaster.intersectObjects(hitboxes);
     if (hits.length) {
         const p = hits[0].object.userData.parent;
-        if (hovered !== p) { setH(p, true); hovered = p; document.body.style.cursor = 'pointer'; }
+        if (hovered !== p) {
+            if (hovered) hovered.userData.isHovered = false;
+            p.userData.isHovered = true;
+            hovered = p;
+            document.body.style.cursor = 'pointer';
+        }
     } else {
-        if (hovered) { setH(hovered, false); hovered = null; document.body.style.cursor = 'default'; }
+        if (hovered) {
+            hovered.userData.isHovered = false;
+            hovered = null;
+            document.body.style.cursor = 'default';
+        }
     }
 }
 
-function setH(paper, on) {
-    const target = on ? 1.3 : 1.0;
-    const startX = paper.scale.x;
-    const t0 = performance.now();
-    (function tick() {
-        const t = Math.min((performance.now() - t0) / 220, 1);
-        const e = 1 - Math.pow(1 - t, 3);
-        const v = startX + (target - startX) * e;
-        paper.scale.set(v, v, v);
-        paper.material.emissiveIntensity = on ? 0.45 : paper.userData.origEmissive;
-        if (t < 1) requestAnimationFrame(tick);
-    })();
+let detailSwitch = null; // { t0, toIdx, phase: 'fadeOut'|'fadeIn' }
+
+function startDetailSwitch(toIdx) {
+    detailSwitch = { t0: performance.now(), toIdx, phase: 'fadeOut' };
+    // Start mobile rotation immediately toward the new cutout
+    const c = cutouts[toIdx];
+    if (c) {
+        const targetRot = Math.PI - c.pos.angle;
+        let current = mobileGroup.rotation.y % (Math.PI*2);
+        if (current < 0) current += Math.PI*2;
+        let diff = targetRot - current;
+        while (diff > Math.PI) diff -= Math.PI*2;
+        while (diff < -Math.PI) diff += Math.PI*2;
+        rotT = { t0: performance.now() + 400, dur: 1200, sr: current, er: current + diff };
+    }
+    controls.autoRotate = false;
 }
 
-// Click on canvas
-function onClk(e) {
+function handleCanvasClick(e) {
     if (e.target.closest('.corner-trigger') || e.target.closest('.legend')) return;
     if (demoMode) { stopDemo(); return; }
 
+    // Re-raycast on click to avoid stale hovered state
+    raycaster.setFromCamera(mouse, camera);
+
     // Check if clicking on wall projection (in detail mode)
     if (viewMode === 'detail') {
-        raycaster.setFromCamera(mouse, camera);
         const projHits = raycaster.intersectObject(projMesh);
         if (projHits.length > 0 && selectedIdx >= 0) {
             openDetailModal(cutouts[selectedIdx].msg, cutouts[selectedIdx].def);
@@ -864,19 +892,26 @@ function onClk(e) {
         }
     }
 
-    if (hovered) {
-        const d = hovered.userData;
-        selectedIdx = d.idx;
-        markSeen(d.idx);
-        drawProjection(d.msg, d.def);
-        toMode('detail');
+    const hits = raycaster.intersectObjects(hitboxes);
+    if (hits.length) {
+        const d = hits[0].object.userData.parent.userData;
+
+        if (viewMode === 'detail' && selectedIdx !== d.idx) {
+            // Switching cutouts within detail mode: fade out, rotate, fade in
+            startDetailSwitch(d.idx);
+        } else if (viewMode !== 'detail') {
+            selectedIdx = d.idx;
+            markSeen(d.idx);
+            drawProjection(d.msg, d.def);
+            toMode('detail');
+        }
     } else if (viewMode === 'detail') {
         toMode('panorama');
     }
 }
 
 renderer.domElement.addEventListener('mousemove', onMove);
-renderer.domElement.addEventListener('click', onClk);
+renderer.domElement.addEventListener('click', handleCanvasClick);
 
 let touchStart = null;
 renderer.domElement.addEventListener('touchstart', e => { touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
@@ -885,24 +920,7 @@ renderer.domElement.addEventListener('touchend', e => {
     if (touchStart && Math.abs(t.clientX - touchStart.x) < 10 && Math.abs(t.clientY - touchStart.y) < 10) {
         mouse.x = (t.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(t.clientY / window.innerHeight) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-        if (viewMode === 'detail') {
-            const projHits = raycaster.intersectObject(projMesh);
-            if (projHits.length > 0 && selectedIdx >= 0) {
-                openDetailModal(cutouts[selectedIdx].msg, cutouts[selectedIdx].def);
-                return;
-            }
-        }
-        const hits = raycaster.intersectObjects(hitboxes);
-        if (hits.length) {
-            const d = hits[0].object.userData.parent.userData;
-            selectedIdx = d.idx;
-            markSeen(d.idx);
-            drawProjection(d.msg, d.def);
-            toMode('detail');
-        } else if (viewMode === 'detail') {
-            toMode('panorama');
-        }
+        handleCanvasClick(e);
     }
 }, { passive: true });
 
@@ -961,6 +979,19 @@ function escapeHtml(t) {
 // ============================================
 window.toggleDemoMode = () => demoMode ? stopDemo() : startDemo();
 
+function fadeAudio(mediaEl, duration = 1000) {
+    if (!mediaEl) return;
+    const startVol = mediaEl.volume || 1.0;
+    const startTime = performance.now();
+    (function tick() {
+        const e = performance.now() - startTime;
+        const t = Math.min(e / duration, 1);
+        mediaEl.volume = Math.max(0, startVol * (1 - t));
+        if (t < 1) requestAnimationFrame(tick);
+        else { mediaEl.pause(); mediaEl.volume = startVol; }
+    })();
+}
+
 function startDemo() {
     if (!cutouts.length) return;
     demoMode = true;
@@ -972,11 +1003,32 @@ function startDemo() {
 
 function showDemoCutout() {
     if (!demoMode) return;
+
+    // Fade out current projection before switching to next (0.5s, synced with rotation)
+    if (viewMode === 'detail' && projMat.opacity > 0.05) {
+        if (currentAudioEl) fadeAudio(currentAudioEl, 1200);
+        if (currentVideoEl) fadeAudio(currentVideoEl, 1200);
+        const nextIdx = cutouts[demoIndex % cutouts.length].idx;
+        demoIndex++;
+        startDetailSwitch(nextIdx);
+        return;
+    }
+
+    loadDemoCutout();
+}
+
+function loadDemoCutout() {
     const c = cutouts[demoIndex % cutouts.length];
     demoIndex++;
     selectedIdx = c.idx;
     drawProjection(c.msg, c.def);
     toMode('detail');
+    scheduleDemoTimer();
+}
+
+function scheduleDemoTimer() {
+    const c = cutouts[selectedIdx];
+    if (!c) return;
     const delay = (c.msg.type === 'audio' || c.msg.type === 'video') ? 10000 : 5500;
     demoTimer = setTimeout(showDemoCutout, delay);
 }
@@ -986,6 +1038,7 @@ function stopDemo() {
     document.getElementById('demoBtn').classList.remove('active');
     document.getElementById('demoIcon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>';
     if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; }
+    detailSwitch = null;
     toMode('panorama');
 }
 
@@ -994,6 +1047,13 @@ function stopDemo() {
 // ============================================
 window.openQRModal = () => document.getElementById('qrModal').classList.add('active');
 window.closeQRModal = () => document.getElementById('qrModal').classList.remove('active');
+
+// ============================================
+// SMOOTH TRANSITION STATE (panorama ↔ detail)
+// ============================================
+let smoothedProjIntensity = 0.60;
+let smoothedOrbBase = 0.78;
+let smoothedLightBase = 5.4;
 
 // ============================================
 // ANIMATION
@@ -1014,9 +1074,11 @@ function animate() {
 
     cutouts.forEach((c, i) => {
         const p = c.paper;
-        const ph = i * 1.7;
-        p.rotation.z = Math.sin(time * 0.6 + ph) * 0.045;
-        p.rotation.x = Math.cos(time * 0.4 + ph) * 0.025;
+        const sw = c.sway;
+        // Organic sway: each cutout has unique speed/phase/amplitude on all 3 axes
+        p.rotation.x = Math.cos(time * sw.speedX + sw.phase) * sw.ampX;
+        p.rotation.y = c.baseRotY + Math.sin(time * sw.speedY + sw.phase * 0.5) * sw.ampY;
+        p.rotation.z = Math.sin(time * sw.speedZ + sw.phase * 1.3) * sw.ampZ;
 
         // Update shader uniforms for ray-traced projections
         if (i < MAX_CUTOUTS) {
@@ -1028,15 +1090,11 @@ function animate() {
         }
 
         if (i === selectedIdx && viewMode === 'detail') {
-            const targetY = c.pos.origY - 0.8;
-            p.position.y += (targetY - p.position.y) * 0.04;
-            // Lower emissive so the projection wall stays readable
-            p.material.emissiveIntensity += (0.40 - p.material.emissiveIntensity) * 0.05;
-            p.material.opacity += (0.92 - p.material.opacity) * 0.05;
-            const gx = c.group.position.x, gz = c.group.position.z;
-            const angle = Math.atan2(gz, gx);
-            c.group.position.x += (Math.cos(angle) * (RING_RADIUS + 0.5) - gx) * 0.03;
-            c.group.position.z += (Math.sin(angle) * (RING_RADIUS + 0.5) - gz) * 0.03;
+            // Selected cutout stays in place; only emissive/active glow changes
+            p.position.y += (c.pos.origY - p.position.y) * 0.04;
+            // Active glow: brighter than hover for clear visual hierarchy
+            p.material.emissiveIntensity += (0.70 - p.material.emissiveIntensity) * 0.05;
+            p.material.opacity += (0.95 - p.material.opacity) * 0.05;
         } else {
             p.position.y += (c.pos.origY - p.position.y) * 0.04;
             // In detail mode, dim unselected cutouts so the selected one + wall projection pop
@@ -1046,8 +1104,14 @@ function animate() {
                 const pulse = Math.sin(time * 2.5 + i * 1.3) * 0.5 + 0.5;
                 targetEmissive = 0.15 + pulse * 0.45;
             }
-            p.material.emissiveIntensity += (targetEmissive - p.material.emissiveIntensity) * 0.04;
-            p.material.opacity += (0.72 - p.material.opacity) * 0.04;
+            // Hover: inner glow instead of scale change
+            let targetOpacity = 0.72;
+            if (p.userData.isHovered && viewMode !== 'detail') {
+                targetEmissive = 0.55;
+                targetOpacity = 0.92;
+            }
+            p.material.emissiveIntensity += (targetEmissive - p.material.emissiveIntensity) * 0.08;
+            p.material.opacity += (targetOpacity - p.material.opacity) * 0.08;
             const gx = c.group.position.x, gz = c.group.position.z;
             const tx = Math.cos(c.pos.angle) * RING_RADIUS;
             const tz = Math.sin(c.pos.angle) * RING_RADIUS;
@@ -1058,19 +1122,21 @@ function animate() {
 
     // Sync cutout count to shader for ray-traced projections
     projectionUniforms.uCutoutCount.value = Math.min(cutouts.length, MAX_CUTOUTS);
-    projectionUniforms.uProjIntensity.value = (viewMode === 'panorama') ? 0.60 : 0.15;
+    const targetProjIntensity = (viewMode === 'panorama') ? 0.60 : 0.15;
+    smoothedProjIntensity += (targetProjIntensity - smoothedProjIntensity) * 0.03;
+    projectionUniforms.uProjIntensity.value = smoothedProjIntensity;
 
-    // Dim the mobile light in detail mode so the wall projection is the hero
-    const orbBase = viewMode === 'detail' ? 0.30 : 0.78;
-    lightOrb.material.opacity = orbBase + Math.sin(time * 0.5) * 0.15;
-    orbGlow.material.opacity = (orbBase * 0.70) + Math.sin(time * 0.5 + 0.6) * 0.18;
-    const lightBase = viewMode === 'detail' ? 2.2 : 5.4;
-    centerLight.intensity = lightBase + Math.sin(time * 0.35) * (viewMode === 'detail' ? 0.6 : 1.2);
+    // Dim the mobile light in detail mode so the wall projection is the hero (smooth transition)
+    const targetOrbBase = viewMode === 'detail' ? 0.30 : 0.78;
+    smoothedOrbBase += (targetOrbBase - smoothedOrbBase) * 0.03;
+    lightOrb.material.opacity = smoothedOrbBase + Math.sin(time * 0.5) * 0.15;
+    orbGlow.material.opacity = (smoothedOrbBase * 0.50) + Math.sin(time * 0.5 + 0.6) * 0.18;
+    const targetLightBase = viewMode === 'detail' ? 2.2 : 5.4;
+    smoothedLightBase += (targetLightBase - smoothedLightBase) * 0.03;
+    centerLight.intensity = smoothedLightBase + Math.sin(time * 0.35) * (smoothedLightBase < 3.5 ? 0.6 : 1.2);
     centerLight.color.setHSL(0.08, 0.15, 0.98 + Math.sin(time * 0.4) * 0.02);
-    if (glowMat.opacity > 0.01) {
-        const base = viewMode === 'detail' ? 0.18 : 0.02;
-        glowMat.opacity = base + Math.sin(time * 0.5) * 0.03;
-    }
+    // Keep glowMesh hidden at all times
+    glowMat.opacity = 0;
 
     // Keep video texture updating frame-by-frame
     if (currentMediaTex && currentMediaTex.isVideoTexture && currentVideoEl && !currentVideoEl.paused) {
@@ -1094,6 +1160,37 @@ function animate() {
         }
     }
     dustParticles.geometry.attributes.position.needsUpdate = true;
+
+    // Detail switch: fade-out synced with mobile rotation (1600ms), then swap, then fade-in (500ms)
+    if (detailSwitch) {
+        const e = performance.now() - detailSwitch.t0;
+        if (detailSwitch.phase === 'fadeOut') {
+            let t = Math.min(e / 1600, 1);
+            t = 1 - Math.pow(1 - t, 3); // ease-out cubic
+            projMat.opacity = 0.98 * (1 - t);
+            mediaPlaneMat.opacity = targetMediaOpacity * (1 - t);
+            if (t >= 1) {
+                selectedIdx = detailSwitch.toIdx;
+                markSeen(selectedIdx);
+                const c = cutouts[selectedIdx];
+                if (c) {
+                    drawProjection(c.msg, c.def);
+                    setDetailMedia(messages[selectedIdx]);
+                }
+                detailSwitch.phase = 'fadeIn';
+                detailSwitch.t0 = performance.now();
+            }
+        } else {
+            let t = Math.min(e / 1000, 1);
+            t = 1 - Math.pow(1 - t, 3); // ease-out cubic
+            projMat.opacity = 0.98 * t;
+            mediaPlaneMat.opacity = targetMediaOpacity * t;
+            if (t >= 1) {
+                detailSwitch = null;
+                if (demoMode) scheduleDemoTimer();
+            }
+        }
+    }
 
     updateCam();
     controls.update();
