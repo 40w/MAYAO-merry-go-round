@@ -165,16 +165,26 @@ const lightOrb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 24, 24), orbCoreM
 lightOrb.position.y = RING_Y - 0.25;
 mobileGroup.add(lightOrb);
 
-// Outer glow halo around the light orb — two layers for soft, luminous falloff
-const orbGlowMat1 = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false });
-const orbGlow1 = new THREE.Mesh(new THREE.SphereGeometry(0.48, 24, 24), orbGlowMat1);
-orbGlow1.position.copy(lightOrb.position);
-mobileGroup.add(orbGlow1);
-
-const orbGlowMat2 = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
-const orbGlow2 = new THREE.Mesh(new THREE.SphereGeometry(0.80, 24, 24), orbGlowMat2);
-orbGlow2.position.copy(lightOrb.position);
-mobileGroup.add(orbGlow2);
+// Soft radial glow halo — like a real lamp with smooth falloff
+function createOrbGlowTexture() {
+    const cvs = document.createElement('canvas');
+    cvs.width = 256; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, 'rgba(255, 248, 240, 1.0)');
+    g.addColorStop(0.15, 'rgba(255, 248, 240, 0.55)');
+    g.addColorStop(0.45, 'rgba(255, 248, 240, 0.12)');
+    g.addColorStop(1, 'rgba(255, 248, 240, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    return new THREE.CanvasTexture(cvs);
+}
+const orbGlowTex = createOrbGlowTexture();
+const orbGlowMat = new THREE.SpriteMaterial({ map: orbGlowTex, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+const orbGlow = new THREE.Sprite(orbGlowMat);
+orbGlow.scale.set(2.8, 2.8, 1);
+orbGlow.position.copy(lightOrb.position);
+mobileGroup.add(orbGlow);
 
 const centerLight = new THREE.PointLight(0xfff5ee, 5, 16, 1.3);
 centerLight.position.set(0, RING_Y - 0.25, 0);
@@ -951,8 +961,7 @@ function animate() {
     // Dim the mobile light in detail mode so the wall projection is the hero
     const orbBase = viewMode === 'detail' ? 0.30 : 0.78;
     lightOrb.material.opacity = orbBase + Math.sin(time * 0.5) * 0.15;
-    orbGlow1.material.opacity = (orbBase * 0.45) + Math.sin(time * 0.5 + 0.6) * 0.14;
-    orbGlow2.material.opacity = (orbBase * 0.20) + Math.sin(time * 0.5 + 1.2) * 0.08;
+    orbGlow.material.opacity = (orbBase * 0.70) + Math.sin(time * 0.5 + 0.6) * 0.18;
     const lightBase = viewMode === 'detail' ? 2.2 : 5.4;
     centerLight.intensity = lightBase + Math.sin(time * 0.35) * (viewMode === 'detail' ? 0.6 : 1.2);
     centerLight.color.setHSL(0.08, 0.15, 0.98 + Math.sin(time * 0.4) * 0.02);
