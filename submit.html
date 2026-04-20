@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Leave a Message | MAYAO Shadow Casting</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Noto Sans SC', sans-serif; background: #ffffff; color: #262425; min-height: 100vh; overflow-x: hidden; }
+        .header { text-align: center; padding: 48px 24px 32px; }
+        .header h1 { font-family: 'Noto Sans SC', sans-serif; font-size: 1.2rem; font-weight: 400; letter-spacing: 0.3em; color: #262425; }
+        .header p { font-size: 0.75rem; color: rgba(38,36,37,0.5); margin-top: 8px; letter-spacing: 0.1em; }
+        .container { max-width: 480px; margin: 0 auto; padding: 0 24px 48px; }
+        .type-selector { display: flex; gap: 8px; margin-bottom: 28px; overflow-x: auto; padding-bottom: 4px; }
+        .type-btn { flex: 1; min-width: 72px; padding: 14px 8px; border: 1px solid rgba(38,36,37,0.15); background: #fff; color: #262425; font-family: 'Noto Sans SC', sans-serif; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: all 0.3s ease; border-radius: 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .type-btn:hover { border-color: #262425; }
+        .type-btn.active { background: #262425; color: #fff; border-color: #262425; }
+        .type-btn svg { width: 20px; height: 20px; }
+        .section { display: none; }
+        .section.active { display: block; animation: fadeIn 0.4s ease; }
+        .section.fadeOut { display: block; animation: fadeOut 0.3s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+        .minimal-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid rgba(38,36,37,0.2); color: #262425; padding: 14px 0; font-size: 1rem; font-family: 'Noto Sans SC', sans-serif; transition: all 0.3s ease; margin-bottom: 24px; }
+        .minimal-input:focus { outline: none; border-bottom-color: #262425; }
+        .minimal-input::placeholder { color: rgba(38,36,37,0.35); }
+        textarea.minimal-input { min-height: 120px; resize: none; line-height: 1.8; border: 1px solid rgba(38,36,37,0.15); padding: 16px; border-radius: 4px; margin-bottom: 20px; }
+        textarea.minimal-input:focus { border-color: #262425; }
+        .file-drop { border: 2px dashed rgba(38,36,37,0.2); border-radius: 8px; padding: 40px 24px; text-align: center; cursor: pointer; transition: all 0.3s ease; margin-bottom: 24px; }
+        .file-drop:hover, .file-drop.dragover { border-color: #262425; background: rgba(38,36,37,0.02); }
+        .file-drop svg { width: 32px; height: 32px; margin: 0 auto 12px; opacity: 0.4; }
+        .file-drop p { font-size: 0.8rem; color: rgba(38,36,37,0.5); }
+        .file-drop .sub { font-size: 0.7rem; color: rgba(38,36,37,0.35); margin-top: 4px; }
+        .preview-area { margin-bottom: 24px; }
+        .preview-area img, .preview-area video { max-width: 100%; border-radius: 8px; display: block; }
+        .preview-area audio { width: 100%; }
+        .recorder-box { border: 1px solid rgba(38,36,37,0.15); border-radius: 8px; padding: 32px; text-align: center; margin-bottom: 24px; }
+        .rec-btn { width: 72px; height: 72px; border-radius: 50%; border: 1px solid #262425; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; transition: all 0.3s ease; }
+        .rec-btn:hover { transform: scale(1.05); }
+        .rec-btn.recording { background: #ff4444; border-color: #ff4444; animation: pulseRec 1.5s ease-in-out infinite; }
+        .rec-btn.recording svg { stroke: #fff; }
+        @keyframes pulseRec { 0%,100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); } 50% { box-shadow: 0 0 0 16px rgba(255,68,68,0); } }
+        .rec-time { font-family: 'Cinzel', serif; font-size: 1.2rem; letter-spacing: 0.2em; color: #262425; }
+        .rec-label { font-size: 0.7rem; color: rgba(38,36,37,0.5); margin-top: 8px; letter-spacing: 0.1em; }
+        .submit-btn { width: 100%; padding: 16px; background: transparent; border: 1px solid #262425; color: #262425; font-family: 'Cinzel', serif; letter-spacing: 0.25em; font-size: 0.75rem; cursor: pointer; transition: all 0.4s ease; margin-top: 8px; }
+        .submit-btn:hover { background: #262425; color: #fff; letter-spacing: 0.35em; }
+        .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .success-msg { text-align: center; padding: 60px 24px; }
+        .success-msg h2 { font-family: 'Noto Sans SC', sans-serif; font-size: 1rem; font-weight: 400; letter-spacing: 0.2em; margin-bottom: 16px; }
+        .success-msg p { font-size: 0.8rem; color: rgba(38,36,37,0.5); margin-bottom: 32px; }
+        .back-link { display: inline-block; padding: 12px 32px; border: 1px solid #262425; color: #262425; text-decoration: none; font-family: 'Noto Sans SC', sans-serif; font-size: 0.7rem; letter-spacing: 0.15em; transition: all 0.3s ease; }
+        .back-link:hover { background: #262425; color: #fff; }
+        .hidden { display: none !important; }
+        .view-transition { transition: opacity 0.5s ease, transform 0.5s ease, visibility 0.5s ease; }
+        .view-hidden { opacity: 0; visibility: hidden; transform: translateY(-16px); position: absolute; width: 100%; pointer-events: none; }
+        .view-visible { opacity: 1; visibility: visible; transform: translateY(0); position: relative; }
+        .back-home { position: fixed; top: 24px; left: 24px; width: 44px; height: 44px; cursor: pointer; z-index: 50; }
+        .back-home a { width: 100%; height: 100%; border: 1px solid #262425; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; background: #fff; text-decoration: none; color: #262425; }
+        .back-home a:hover { box-shadow: 0 0 20px rgba(38,36,37,0.15); transform: scale(1.05); }
+        @media (max-width: 480px) {
+            .header { padding: 32px 20px 24px; }
+            .container { padding: 0 20px 40px; }
+            .type-btn { padding: 12px 6px; font-size: 0.65rem; }
+            .back-home { width: 28px; height: 28px; top: 16px; left: 16px; }
+            .back-home svg { width: 12px; height: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="back-home" title="Back to Exhibition">
+        <a href="index.html">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </a>
+    </div>
+    <div id="formView" class="view-transition view-visible">
+        <div class="header">
+            <h1>LEAVE A MESSAGE</h1>
+            <p>Your message will become a cutout on the shadow wall</p>
+        </div>
+        <div class="container">
+            <div class="type-selector">
+                <button class="type-btn active" data-type="text" onclick="selectType('text')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+                    Text
+                </button>
+                <button class="type-btn" data-type="audio" onclick="selectType('audio')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>
+                    Audio
+                </button>
+                <button class="type-btn" data-type="image" onclick="selectType('image')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    Image
+                </button>
+                <button class="type-btn" data-type="video" onclick="selectType('video')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M10 8l6 4-6 4V8z"/></svg>
+                    Video
+                </button>
+            </div>
+
+            <input type="text" class="minimal-input" id="authorInput" placeholder="Your Name (Optional)" maxlength="20">
+
+            <div class="section active" id="sec-text">
+                <textarea class="minimal-input" id="textInput" placeholder="What would you like to say..." maxlength="300" oninput="updateTextCount()"></textarea>
+                <div id="textCount" style="text-align:right;font-size:0.7rem;color:rgba(38,36,37,0.4);margin-top:-16px;margin-bottom:16px;">0 / 300</div>
+            </div>
+
+            <div class="section" id="sec-audio">
+                <div class="recorder-box">
+                    <button class="rec-btn" id="recBtn" onclick="toggleRecord()">
+                        <svg id="recIcon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1.5"><circle cx="12" cy="12" r="6"/></svg>
+                    </button>
+                    <div class="rec-time" id="recTime">00:00</div>
+                    <div class="rec-label">TAP TO RECORD</div>
+                </div>
+                <div style="text-align:center;margin:16px 0;font-size:0.7rem;color:rgba(38,36,37,0.4);letter-spacing:0.1em;">OR</div>
+                <div class="file-drop" id="audioDrop" onclick="document.getElementById('audioFile').click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <p>Upload an audio file</p>
+                    <p class="sub">MP3, WAV, M4A, WEBM</p>
+                </div>
+                <input type="file" id="audioFile" accept="audio/*" class="hidden" onchange="handleFile(this, 'audio')">
+                <div class="preview-area hidden" id="audioPreview"></div>
+                <textarea class="minimal-input" id="audioCaption" placeholder="Add a caption (required)..." maxlength="200" style="min-height:80px;"></textarea>
+            </div>
+
+            <div class="section" id="sec-image">
+                <div class="recorder-box">
+                    <button class="rec-btn" onclick="document.getElementById('imageCapture').click()">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    </button>
+                    <div class="rec-label">TAKE A PHOTO</div>
+                </div>
+                <input type="file" id="imageCapture" accept="image/*" capture="environment" class="hidden" onchange="handleFile(this, 'image')">
+                <div style="text-align:center;margin:16px 0;font-size:0.7rem;color:rgba(38,36,37,0.4);letter-spacing:0.1em;">OR</div>
+                <div class="file-drop" id="imageDrop" onclick="document.getElementById('imageFile').click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <p>Upload an image</p>
+                    <p class="sub">JPG, PNG, WEBP up to 10MB</p>
+                </div>
+                <input type="file" id="imageFile" accept="image/*" class="hidden" onchange="handleFile(this, 'image')">
+                <div class="preview-area hidden" id="imagePreview"></div>
+                <textarea class="minimal-input" id="imageCaption" placeholder="Add a caption (required)..." maxlength="200" style="min-height:80px;"></textarea>
+            </div>
+
+            <div class="section" id="sec-video">
+                <div class="recorder-box">
+                    <button class="rec-btn" onclick="document.getElementById('videoCapture').click()">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    </button>
+                    <div class="rec-label">RECORD A VIDEO</div>
+                </div>
+                <input type="file" id="videoCapture" accept="video/*" capture="environment" class="hidden" onchange="handleFile(this, 'video')">
+                <div style="text-align:center;margin:16px 0;font-size:0.7rem;color:rgba(38,36,37,0.4);letter-spacing:0.1em;">OR</div>
+                <div class="file-drop" id="videoDrop" onclick="document.getElementById('videoFile').click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#262425" stroke-width="1"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    <p>Upload a video file</p>
+                    <p class="sub">MP4, WEBM up to 20MB</p>
+                </div>
+                <input type="file" id="videoFile" accept="video/*" class="hidden" onchange="handleFile(this, 'video')">
+                <div class="preview-area hidden" id="videoPreview"></div>
+                <div style="text-align:center;margin:12px 0;font-size:0.7rem;color:rgba(38,36,37,0.4);letter-spacing:0.1em;">OR PASTE A VIDEO LINK</div>
+                <input type="text" class="minimal-input" id="videoUrlInput" placeholder="https://youtube.com/... or any video URL" oninput="updateVideoUrlPreview()">
+                <div class="preview-area hidden" id="videoUrlPreview"></div>
+                <textarea class="minimal-input" id="videoCaption" placeholder="Add a caption (required)..." maxlength="200" style="min-height:80px;"></textarea>
+            </div>
+
+            <button class="submit-btn" id="submitBtn" onclick="submitMessage()">PLANT MEMORIES</button>
+        </div>
+    </div>
+
+    <div id="successView" class="success-msg view-transition view-hidden">
+        <div class="header">
+            <h2>THANK YOU FOR YOUR MESSAGE</h2>
+            <p>Your memory has been planted.<br>It will appear as a colored cutout in the shadow casting.</p>
+            <a href="index.html" class="back-link">RETURN TO EXHIBITION</a>
+        </div>
+    </div>
+
+    <script>
+    // ==================== Supabase ====================
+    // TODO: Replace with your Supabase project credentials
+    const SUPABASE_URL = 'https://kggcyurkabnxtqfzfzfqexsb.supabase.co';
+    const SUPABASE_ANON_KEY = 'publishable_fnGMVGVQdwfNLE1o_QezFw_BVPN8Gm5';
+    let sbClient = null;
+    try {
+        if (window.supabase && window.supabase.createClient) {
+            sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+    } catch (e) { console.error('Supabase init failed:', e); }
+
+    function dataURLtoBlob(dataURL) {
+        const arr = dataURL.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        return new Blob([u8arr], { type: mime });
+    }
+
+    async function saveToSupabase(message, mediaData) {
+        if (!sbClient) throw new Error('Supabase not initialized');
+        let media_url = message.mediaUrl || null;
+        let media_storage_path = null;
+
+        if (mediaData) {
+            const blob = dataURLtoBlob(mediaData);
+            const ext = message.type === 'image' ? 'jpg' : message.type === 'audio' ? 'webm' : 'mp4';
+            const path = `${message.type}/${message.id}.${ext}`;
+            const { error: upErr } = await sbClient.storage.from('media').upload(path, blob, {
+                contentType: blob.type || 'application/octet-stream',
+                upsert: false
+            });
+            if (upErr) throw upErr;
+            const { data: urlData } = sbClient.storage.from('media').getPublicUrl(path);
+            media_url = urlData.publicUrl;
+            media_storage_path = path;
+        }
+
+        const { error } = await sbClient.from('messages').insert([{
+            id: message.id,
+            author: message.author,
+            content: message.content,
+            type: message.type,
+            media_url: media_url,
+            media_storage_path: media_storage_path,
+            timestamp: message.timestamp,
+            hidden: false
+        }]);
+        if (error) throw error;
+    }
+
+    function formatDate(d) {
+        return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    // ==================== App State ====================
+    let currentType = 'text';
+    let mediaData = null;
+    let mediaUrl = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordStartTime = 0;
+    let recordTimer = null;
+    let isRecording = false;
+
+    function updateTextCount() {
+        const val = document.getElementById('textInput').value.length;
+        document.getElementById('textCount').textContent = val + ' / 300';
+    }
+
+    function selectType(type) {
+        currentType = type;
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.type-btn[data-type="${type}"]`).classList.add('active');
+
+        const currentActive = document.querySelector('.section.active');
+        if (currentActive) {
+            currentActive.classList.add('fadeOut');
+            setTimeout(() => {
+                currentActive.classList.remove('active', 'fadeOut');
+                document.getElementById('sec-' + type).classList.add('active');
+            }, 280);
+        } else {
+            document.getElementById('sec-' + type).classList.add('active');
+        }
+    }
+
+    // ==================== Image Compression ====================
+    function compressImage(file, maxWidth = 2048, quality = 0.85) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                let w = img.width, h = img.height;
+                if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(file);
+        });
+    }
+
+    // ==================== File Handling ====================
+    const SIZE_LIMITS = { image: 30 * 1024 * 1024, audio: 20 * 1024 * 1024, video: 50 * 1024 * 1024 };
+
+    async function handleFile(input, type) {
+        const file = input.files[0];
+        if (!file) return;
+        const limit = SIZE_LIMITS[type] || 10 * 1024 * 1024;
+        if (file.size > limit) {
+            alert('File too large. Please keep ' + type + ' files under ' + (limit/1024/1024) + 'MB. For large videos, use the link option.');
+            input.value = '';
+            return;
+        }
+
+        let data;
+        if (type === 'image') {
+            data = await compressImage(file);
+        } else {
+            data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        mediaData = data;
+        const preview = document.getElementById(type + 'Preview');
+        if (type === 'image') preview.innerHTML = `<img src="${data}" alt="Preview">`;
+        else if (type === 'video') preview.innerHTML = `<video controls src="${data}" style="max-height:300px;"></video>`;
+        else if (type === 'audio') preview.innerHTML = `<audio controls src="${data}" style="width:100%;"></audio>`;
+        preview.classList.remove('hidden');
+    }
+
+    function getYouTubeEmbedUrl(url) {
+        if (!url) return null;
+        const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/);
+        return m ? 'https://www.youtube.com/embed/' + m[1] : null;
+    }
+
+    function updateVideoUrlPreview() {
+        const url = document.getElementById('videoUrlInput').value.trim();
+        mediaUrl = url || null;
+        const preview = document.getElementById('videoUrlPreview');
+        if (url) {
+            const yt = getYouTubeEmbedUrl(url);
+            if (yt) {
+                preview.innerHTML = `<iframe width="100%" height="180" src="${yt}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border-radius:4px;max-width:100%;"></iframe>`;
+            } else {
+                preview.innerHTML = `<video controls src="${url}" style="max-height:200px;width:100%;"></video>`;
+            }
+            preview.classList.remove('hidden');
+        } else {
+            preview.innerHTML = '';
+            preview.classList.add('hidden');
+        }
+    }
+
+    // Drag & drop
+    ['imageDrop','videoDrop','audioDrop'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('dragover'); });
+        el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+        el.addEventListener('drop', (e) => {
+            e.preventDefault(); el.classList.remove('dragover');
+            const typeMap = { imageDrop: 'image', videoDrop: 'video', audioDrop: 'audio' };
+            const type = typeMap[id];
+            const input = document.getElementById(type + 'File');
+            if (e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                handleFile(input, type);
+            }
+        });
+    });
+
+    // ==================== Audio Recorder ====================
+    async function toggleRecord() {
+        if (isRecording) {
+            stopRecord();
+        } else {
+            startRecord();
+        }
+    }
+
+    async function startRecord() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            recordedChunks = [];
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    mediaData = e.target.result;
+                    const preview = document.getElementById('audioPreview');
+                    preview.innerHTML = `<audio controls src="${mediaData}" style="width:100%;"></audio>`;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(blob);
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mediaRecorder.start();
+            isRecording = true;
+            recordStartTime = Date.now();
+            document.getElementById('recBtn').classList.add('recording');
+            document.getElementById('recIcon').innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2" fill="#fff" stroke="none"/>';
+            document.querySelector('.rec-label').textContent = 'TAP TO STOP';
+            recordTimer = setInterval(updateRecTime, 1000);
+        } catch (err) {
+            alert('Microphone access denied or not available.');
+        }
+    }
+
+    function stopRecord() {
+        if (!mediaRecorder) return;
+        mediaRecorder.stop();
+        isRecording = false;
+        document.getElementById('recBtn').classList.remove('recording');
+        document.getElementById('recIcon').innerHTML = '<circle cx="12" cy="12" r="6"/>';
+        document.querySelector('.rec-label').textContent = 'TAP TO RECORD';
+        clearInterval(recordTimer);
+        document.getElementById('recTime').textContent = '00:00';
+    }
+
+    function updateRecTime() {
+        const sec = Math.floor((Date.now() - recordStartTime) / 1000);
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        document.getElementById('recTime').textContent = `${m}:${s}`;
+    }
+
+    // ==================== Submit ====================
+    async function submitMessage() {
+        const author = document.getElementById('authorInput').value.trim();
+        let content = '';
+
+        if (currentType === 'text') {
+            content = document.getElementById('textInput').value.trim();
+            if (!content) { shake(document.getElementById('textInput')); return; }
+        } else if (currentType === 'audio') {
+            content = document.getElementById('audioCaption').value.trim();
+            if (!content) { shake(document.getElementById('audioCaption')); return; }
+            if (!mediaData) { shake(document.getElementById('audioDrop')); return; }
+        } else if (currentType === 'image') {
+            content = document.getElementById('imageCaption').value.trim();
+            if (!content) { shake(document.getElementById('imageCaption')); return; }
+            if (!mediaData) { shake(document.getElementById('imageDrop')); return; }
+        } else if (currentType === 'video') {
+            content = document.getElementById('videoCaption').value.trim();
+            if (!content) { shake(document.getElementById('videoCaption')); return; }
+            if (!mediaData && !mediaUrl) { shake(document.getElementById('videoDrop')); return; }
+        }
+
+        const message = {
+            id: Date.now(),
+            author: author || 'Anonymous',
+            content: content,
+            type: currentType,
+            mediaUrl: mediaUrl || null,
+            timestamp: Date.now(),
+            hidden: false
+        };
+
+        // Save to localStorage for immediate display in the exhibition
+        const localMessages = JSON.parse(localStorage.getItem('mayao-messages') || '[]');
+        localMessages.push({
+            id: message.id,
+            type: message.type,
+            title: message.type === 'text' ? message.content.slice(0, 40) : message.content.slice(0, 40) || 'Untitled',
+            content: mediaData || message.mediaUrl || message.content,
+            author: message.author,
+            date: formatDate(new Date(message.timestamp))
+        });
+        localStorage.setItem('mayao-messages', JSON.stringify(localMessages));
+
+        try {
+            await saveToSupabase(message, mediaData);
+        } catch (e) {
+            console.error('Supabase submit failed (local copy saved):', e);
+        }
+
+        const formView = document.getElementById('formView');
+        const successView = document.getElementById('successView');
+        formView.classList.remove('view-visible');
+        formView.classList.add('view-hidden');
+        setTimeout(() => {
+            formView.classList.add('hidden');
+            successView.classList.remove('hidden', 'view-hidden');
+            successView.classList.add('view-visible');
+        }, 500);
+    }
+
+    function shake(el) {
+        el.style.transform = 'translateX(-6px)';
+        setTimeout(() => el.style.transform = 'translateX(6px)', 60);
+        setTimeout(() => el.style.transform = 'translateX(-4px)', 120);
+        setTimeout(() => el.style.transform = 'translateX(4px)', 180);
+        setTimeout(() => el.style.transform = 'translateX(0)', 240);
+    }
+
+    // Init
+    // Supabase client auto-initializes above
+    </script>
+</body>
+</html>
