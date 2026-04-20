@@ -165,11 +165,16 @@ const lightOrb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 24, 24), orbCoreM
 lightOrb.position.y = RING_Y - 0.25;
 mobileGroup.add(lightOrb);
 
-// Outer glow halo around the light orb
-const orbGlowMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
-const orbGlow = new THREE.Mesh(new THREE.SphereGeometry(0.38, 24, 24), orbGlowMat);
-orbGlow.position.copy(lightOrb.position);
-mobileGroup.add(orbGlow);
+// Outer glow halo around the light orb — two layers for soft, luminous falloff
+const orbGlowMat1 = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false });
+const orbGlow1 = new THREE.Mesh(new THREE.SphereGeometry(0.48, 24, 24), orbGlowMat1);
+orbGlow1.position.copy(lightOrb.position);
+mobileGroup.add(orbGlow1);
+
+const orbGlowMat2 = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+const orbGlow2 = new THREE.Mesh(new THREE.SphereGeometry(0.80, 24, 24), orbGlowMat2);
+orbGlow2.position.copy(lightOrb.position);
+mobileGroup.add(orbGlow2);
 
 const centerLight = new THREE.PointLight(0xfff5ee, 5, 16, 1.3);
 centerLight.position.set(0, RING_Y - 0.25, 0);
@@ -946,7 +951,8 @@ function animate() {
     // Dim the mobile light in detail mode so the wall projection is the hero
     const orbBase = viewMode === 'detail' ? 0.30 : 0.78;
     lightOrb.material.opacity = orbBase + Math.sin(time * 0.5) * 0.15;
-    orbGlow.material.opacity = (orbBase * 0.28) + Math.sin(time * 0.5 + 0.8) * 0.10;
+    orbGlow1.material.opacity = (orbBase * 0.45) + Math.sin(time * 0.5 + 0.6) * 0.14;
+    orbGlow2.material.opacity = (orbBase * 0.20) + Math.sin(time * 0.5 + 1.2) * 0.08;
     const lightBase = viewMode === 'detail' ? 2.2 : 5.4;
     centerLight.intensity = lightBase + Math.sin(time * 0.35) * (viewMode === 'detail' ? 0.6 : 1.2);
     centerLight.color.setHSL(0.08, 0.15, 0.98 + Math.sin(time * 0.4) * 0.02);
