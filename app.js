@@ -115,17 +115,47 @@ const orbCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: t
 // ============================================
 // ROOM
 // ============================================
-// (Shader materials created below after projection shader definitions)
-const wall = new THREE.Mesh(new THREE.CylinderGeometry(ROOM_RADIUS, ROOM_RADIUS, 9, 56, 1, true), null); // mat assigned later
+// Helper to share cutout uniforms but allow independent base colour
+function makeRoomUniforms(baseColorHex) {
+    return {
+        uLightPos: projectionUniforms.uLightPos,
+        uCutoutCount: projectionUniforms.uCutoutCount,
+        uCutoutPositions: projectionUniforms.uCutoutPositions,
+        uCutoutColors: projectionUniforms.uCutoutColors,
+        uCutoutRadii: projectionUniforms.uCutoutRadii,
+        uBaseColor: { value: new THREE.Color(baseColorHex) }
+    };
+}
+
+const wallShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xffffff),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader,
+    side: THREE.BackSide
+});
+
+const floorShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xffffff),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader
+});
+
+const ceilingShaderMat = new THREE.ShaderMaterial({
+    uniforms: makeRoomUniforms(0xbbbbbb),
+    vertexShader: projectionVertexShader,
+    fragmentShader: projectionFragmentShader
+});
+
+const wall = new THREE.Mesh(new THREE.CylinderGeometry(ROOM_RADIUS, ROOM_RADIUS, 9, 56, 1, true), wallShaderMat);
 wall.position.y = 1;
 scene.add(wall);
 
-const floor = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS * 2, 56), null); // mat assigned later
+const floor = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS * 2, 56), floorShaderMat);
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -3.5;
 scene.add(floor);
 
-const ceiling = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS, 56), null); // mat assigned later
+const ceiling = new THREE.Mesh(new THREE.CircleGeometry(ROOM_RADIUS, 56), ceilingShaderMat);
 ceiling.rotation.x = Math.PI / 2;
 ceiling.position.y = 5.5;
 scene.add(ceiling);
@@ -210,8 +240,7 @@ const projectionUniforms = {
     uCutoutPositions: { value: Array(MAX_CUTOUTS).fill().map(() => new THREE.Vector3()) },
     uCutoutColors: { value: Array(MAX_CUTOUTS).fill().map(() => new THREE.Color()) },
     uCutoutRadii: { value: new Float32Array(MAX_CUTOUTS) },
-    uBaseColor: { value: new THREE.Color(0xffffff) },
-    uProjIntensity: { value: 1.0 }
+    uBaseColor: { value: new THREE.Color(0xffffff) }
 };
 
 const projectionVertexShader = `
@@ -232,7 +261,6 @@ const projectionFragmentShader = `
     uniform vec3 uCutoutColors[12];
     uniform float uCutoutRadii[12];
     uniform vec3 uBaseColor;
-    uniform float uProjIntensity;
     varying vec3 vWorldPosition;
     varying vec3 vNormal;
 
@@ -241,8 +269,7 @@ const projectionFragmentShader = `
         vec3 ambient = vec3(0.55);
         vec3 lightDir = normalize(vec3(0.3, 1.0, 0.2));
         float diff = max(dot(normalize(vNormal), lightDir), 0.0);
-        // Darken base so coloured projections have room to show up on white surfaces
-        vec3 base = uBaseColor * (ambient + vec3(0.30) * diff) * 0.72;
+        vec3 base = uBaseColor * (ambient + vec3(0.30) * diff);
 
         // Ray from light to this pixel
         vec3 toPixel = vWorldPosition - uLightPos;
@@ -250,7 +277,6 @@ const projectionFragmentShader = `
         vec3 rayDir = toPixel / max(pixelDist, 0.001);
 
         vec3 projColor = vec3(0.0);
-        float projAlpha = 0.0;
 
         for (int i = 0; i < 12; i++) {
             if (i >= uCutoutCount) break;
@@ -276,52 +302,15 @@ const projectionFragmentShader = `
 
             if (dist < projRadius) {
                 float alpha = 1.0 - smoothstep(projRadius - edge, projRadius, dist);
-                projColor += cCol * alpha;
-                projAlpha += alpha * 0.45 * uProjIntensity;
+                projColor += cCol * alpha * 0.22;
             }
         }
 
-        // Mix projection over base (much more visible on white than pure additive)
-        projAlpha = min(projAlpha, 0.85);
-        vec3 finalColor = mix(base, projColor, projAlpha);
+        vec3 finalColor = base + projColor;
         finalColor = min(finalColor, vec3(1.0));
         gl_FragColor = vec4(finalColor, 1.0);
     }
 `;
-
-// Helper to share cutout uniforms but allow independent base colour
-function makeRoomUniforms(baseColorHex) {
-    return {
-        uLightPos: projectionUniforms.uLightPos,
-        uCutoutCount: projectionUniforms.uCutoutCount,
-        uCutoutPositions: projectionUniforms.uCutoutPositions,
-        uCutoutColors: projectionUniforms.uCutoutColors,
-        uCutoutRadii: projectionUniforms.uCutoutRadii,
-        uBaseColor: { value: new THREE.Color(baseColorHex) },
-        uProjIntensity: projectionUniforms.uProjIntensity
-    };
-}
-
-const wallShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader,
-    side: THREE.BackSide
-});
-const floorShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xffffff),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader
-});
-const ceilingShaderMat = new THREE.ShaderMaterial({
-    uniforms: makeRoomUniforms(0xbbbbbb),
-    vertexShader: projectionVertexShader,
-    fragmentShader: projectionFragmentShader
-});
-
-wall.material = wallShaderMat;
-floor.material = floorShaderMat;
-ceiling.material = ceilingShaderMat;
 
 function buildMobile() {
     cutouts.forEach(c => { mobileGroup.remove(c.group); });
@@ -837,7 +826,6 @@ function animate() {
 
     // Sync cutout count to shader for ray-traced projections
     projectionUniforms.uCutoutCount.value = Math.min(cutouts.length, MAX_CUTOUTS);
-    projectionUniforms.uProjIntensity.value = (viewMode === 'panorama') ? 0.5 : 1.0;
 
     // Dim the mobile light in detail mode so the wall projection is the hero
     const orbBase = viewMode === 'detail' ? 0.30 : 0.65;
