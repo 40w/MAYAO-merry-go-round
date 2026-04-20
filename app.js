@@ -52,18 +52,7 @@ function normalizeMessage(m) {
     return { id: m.id || Date.now(), type, title, content, author: m.author || 'Anonymous', date };
 }
 
-function loadMessages() {
-    const stored = localStorage.getItem('mayao-messages');
-    if (stored) {
-        try {
-            const raw = JSON.parse(stored);
-            return raw.map(normalizeMessage).filter(m => m && !m.hidden);
-        } catch (e) { console.error('Failed to load messages:', e); }
-    }
-    return [];
-}
-
-let messages = loadMessages();
+let messages = [];
 let viewMode = 'panorama';
 let selectedIdx = -1;
 let demoMode = false;
@@ -84,7 +73,7 @@ function assignPositions() {
         };
     });
 }
-assignPositions();
+// assignPositions() is called after Supabase data loads
 
 // ============================================
 // SCENE
@@ -408,7 +397,7 @@ function buildMobile() {
     });
 }
 
-buildMobile();
+// buildMobile() is called after Supabase data loads
 
 // ============================================
 // WALL PROJECTION (CanvasTexture for detail mode)
@@ -987,13 +976,55 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================
+// SUPABASE INTEGRATION
+// ============================================
+const SUPABASE_URL = 'https://kggcyurkabnxtqfzfzfqexsb.supabase.co';
+const SUPABASE_ANON_KEY = 'publishable_fnGMVGVQdwfNLE1o_QezFw_BVPN8Gm5';
+
+let sbClient = null;
+try {
+    if (window.supabase && window.supabase.createClient) {
+        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+} catch (e) { console.error('Supabase init failed:', e); }
+
+async function loadMessagesFromSupabase() {
+    if (!sbClient) return [];
+    const { data, error } = await sbClient
+        .from('messages')
+        .select('*')
+        .eq('hidden', false)
+        .order('timestamp', { ascending: false });
+    if (error) { console.error('Supabase load error:', error); return []; }
+    return (data || []).map(normalizeMessage);
+}
+
+// ============================================
 // INIT
 // ============================================
-document.getElementById('cutoutCount').textContent = messages.length;
+async function init() {
+    messages = await loadMessagesFromSupabase();
+    assignPositions();
+    buildMobile();
+    document.getElementById('cutoutCount').textContent = messages.length;
+    setTimeout(() => {
+        const loader = document.getElementById('loader');
+        if (loader) { loader.classList.add('hidden'); document.body.classList.add('loaded'); }
+    }, 800);
+}
 
-setTimeout(() => {
-    const loader = document.getElementById('loader');
-    if (loader) { loader.classList.add('hidden'); document.body.classList.add('loaded'); }
-}, 1200);
+init();
+
+// Poll Supabase every 20s for new messages
+setInterval(async () => {
+    if (viewMode === 'detail') return; // don't refresh while reading
+    const fresh = await loadMessagesFromSupabase();
+    if (fresh.length !== messages.length) {
+        messages = fresh;
+        assignPositions();
+        buildMobile();
+        document.getElementById('cutoutCount').textContent = messages.length;
+    }
+}, 20000);
 
 animate();

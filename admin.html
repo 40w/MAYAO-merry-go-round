@@ -244,27 +244,8 @@
         return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
     }
 
-    function syncToLocal() {
-        const localData = messages.filter(m => !m.hidden).map(m => {
-            const date = m.timestamp ? formatDate(new Date(m.timestamp)) : '2026.04.01';
-            let title = '';
-            if (m.type === 'text') title = (m.content || '').slice(0, 40);
-            else title = (m.content || '').slice(0, 40) || 'Untitled';
-            return {
-                id: m.id,
-                type: m.type,
-                title: title,
-                content: m.media_url || m.mediaUrl || m.mediaData || m.content || '',
-                author: m.author || 'Anonymous',
-                date: date
-            };
-        });
-        localStorage.setItem('mayao-messages', JSON.stringify(localData));
-    }
-
     async function load() {
         messages = await loadMessagesFromDB();
-        syncToLocal();
         render();
     }
 
@@ -342,7 +323,7 @@
 
     async function toggleVisibility(id) {
         const m = messages.find(x => x.id === id);
-        if (m) { m.hidden = !m.hidden; await saveMessageToDB(m); syncToLocal(); render(); }
+        if (m) { m.hidden = !m.hidden; await saveMessageToDB(m); render(); }
     }
 
     async function deleteMessage(id) {
@@ -358,7 +339,6 @@
         messages = [];
         await clearAllMessagesFromDB();
         localStorage.removeItem('flowing-admin-settings');
-        localStorage.removeItem('mayao-messages');
         render();
     }
 

@@ -453,22 +453,12 @@
             hidden: false
         };
 
-        // Save to localStorage for immediate display in the exhibition
-        const localMessages = JSON.parse(localStorage.getItem('mayao-messages') || '[]');
-        localMessages.push({
-            id: message.id,
-            type: message.type,
-            title: message.type === 'text' ? message.content.slice(0, 40) : message.content.slice(0, 40) || 'Untitled',
-            content: mediaData || message.mediaUrl || message.content,
-            author: message.author,
-            date: formatDate(new Date(message.timestamp))
-        });
-        localStorage.setItem('mayao-messages', JSON.stringify(localMessages));
-
         try {
             await saveToSupabase(message, mediaData);
         } catch (e) {
-            console.error('Supabase submit failed (local copy saved):', e);
+            console.error('Supabase submit failed:', e);
+            alert('Failed to submit. Please try again.');
+            return;
         }
 
         const formView = document.getElementById('formView');
