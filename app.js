@@ -165,6 +165,12 @@ const lightOrb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 24, 24), orbCoreM
 lightOrb.position.y = RING_Y - 0.25;
 mobileGroup.add(lightOrb);
 
+// Outer glow halo around the light orb
+const orbGlowMat = new THREE.MeshBasicMaterial({ color: 0xfff8f0, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
+const orbGlow = new THREE.Mesh(new THREE.SphereGeometry(0.38, 24, 24), orbGlowMat);
+orbGlow.position.copy(lightOrb.position);
+mobileGroup.add(orbGlow);
+
 const centerLight = new THREE.PointLight(0xfff5ee, 5, 16, 1.3);
 centerLight.position.set(0, RING_Y - 0.25, 0);
 scene.add(centerLight);
@@ -935,11 +941,12 @@ function animate() {
 
     // Sync cutout count to shader for ray-traced projections
     projectionUniforms.uCutoutCount.value = Math.min(cutouts.length, MAX_CUTOUTS);
-    projectionUniforms.uProjIntensity.value = (viewMode === 'panorama') ? 0.50 : 0.15;
+    projectionUniforms.uProjIntensity.value = (viewMode === 'panorama') ? 0.60 : 0.15;
 
     // Dim the mobile light in detail mode so the wall projection is the hero
     const orbBase = viewMode === 'detail' ? 0.30 : 0.78;
     lightOrb.material.opacity = orbBase + Math.sin(time * 0.5) * 0.15;
+    orbGlow.material.opacity = (orbBase * 0.28) + Math.sin(time * 0.5 + 0.8) * 0.10;
     const lightBase = viewMode === 'detail' ? 2.2 : 5.4;
     centerLight.intensity = lightBase + Math.sin(time * 0.35) * (viewMode === 'detail' ? 0.6 : 1.2);
     centerLight.color.setHSL(0.08, 0.15, 0.98 + Math.sin(time * 0.4) * 0.02);
